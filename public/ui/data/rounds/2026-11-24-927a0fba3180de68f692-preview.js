@@ -1,0 +1,1 @@
+document.currentScript.rate90Data = {"day":"2026-11-24","source":"BSD","mode":"stored","sampleOnly":false,"updatedAt":"2026-11-22T11:50:44.181Z","partial":true,"ruleVersion":"rate90-1.1.0","matches":[]};

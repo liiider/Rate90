@@ -1,3 +1,4 @@
+import {chanceFloorXg, chanceFullXg, chanceScenarios, sustainedPressureMinutes} from './chance-process.mjs';
 import {hasExtraTime} from './style-stats.mjs';
 
 const sum = values => values.reduce((a, b) => a + b, 0);
@@ -30,18 +31,20 @@ export function pressureProfile(trace) {
   return {minutes:seen.size, swings, values:Array.from({length:90}, (_, i) => seen.get(i + 1) ?? null)};
 }
 
-function regulationClock(period, min, extraTime) {
+function regulationClock(period, min, extraTime, added, second) {
   if (!count(min) || (period != null && period !== 1 && period !== 2)) return null;
   if (period == null && min > 90 && extraTime) return null;
   const half = period ?? (min <= 45 ? 1 : 2);
   const minute = half === 1 ? Math.min(min, 45) : Math.min(90, Math.max(46, min));
-  return {half, min, minute};
+  return {half, minute, added:Math.max(count(added) ? added : 0, min - minute),
+    second:count(second) ? second : null};
 }
+
+const byClock = (a, b) => a.half - b.half || a.minute - b.minute || a.added - b.added;
 
 // Only use a reconstruction which accounts for every goal in the official score.
 function scoreTimeline(goals, score90) {
   if (!validScore(score90) || goals.length !== sum(score90) || goals.some(g => g.side === null)) return null;
-  const byClock = (a, b) => a.half - b.half || a.min - b.min || a.added - b.added;
   goals.sort(byClock);
   for (let start = 0; start < goals.length;) {
     let end = start + 1;
@@ -83,17 +86,46 @@ function scoreTimeline(goals, score90) {
   return {closeMinutes, lateCloseMinutes, equalizers, leadReversals, lateSwingGoals};
 }
 
-function incidentTimeline(match, score90, extraTime) {
+function incidentGoalEvents(match, extraTime) {
   if (!Array.isArray(match.incidents) || !match.incidents.length) return null;
   const goals = [];
   for (const event of match.incidents) {
     if (event?.type !== 'goal' || [3, 4, 5].includes(event.period)) continue;
-    const clock = regulationClock(event.period, event.minute, extraTime);
+    const clock = regulationClock(event.period, event.minute, extraTime, event.added_time, event.period_second);
     if (!clock || typeof event.is_home !== 'boolean') return null;
-    goals.push({...clock, side:Number(!event.is_home), added:count(event.added_time) ? event.added_time : 0,
-      second:count(event.period_second) ? event.period_second : null, score:[event.home_score, event.away_score]});
+    goals.push({...clock, side:Number(!event.is_home), score:[event.home_score, event.away_score]});
   }
-  return scoreTimeline(goals, score90);
+  return goals;
+}
+
+// With minute-only clocks, grant the bonus only if every possible pre-shot
+// score agrees that this side could equalize or take the lead.
+function threatensResult(shot, goals) {
+  if (shot.minute < 76 || !goals) return false;
+  let margin = 0;
+  const sameMinute = [];
+  for (const goal of goals) {
+    const order = byClock(goal, shot);
+    if (order > 0) break;
+    if (order === 0) sameMinute.push(goal);
+    else margin += goal.side === shot.side ? 1 : -1;
+  }
+  const canChange = value => value === 0 || value === -1;
+  if (!sameMinute.length) return canChange(margin);
+
+  const possible = [];
+  for (let i = 0; i <= sameMinute.length; i++) {
+    const goal = sameMinute[i];
+    if (shot.goal) {
+      if (goal?.side === shot.side && (shot.second == null || goal.second == null || goal.second === shot.second)) possible.push(margin);
+    } else {
+      const before = sameMinute.slice(0, i), after = sameMinute.slice(i);
+      if (shot.second == null || (before.every(g => g.second == null || g.second <= shot.second) &&
+          after.every(g => g.second == null || g.second >= shot.second))) possible.push(margin);
+    }
+    if (goal) margin += goal.side === shot.side ? 1 : -1;
+  }
+  return possible.length > 0 && possible.every(canChange);
 }
 
 export function shotProfile(match, score90, pressure, extraTime = hasExtraTime(match)) {
@@ -102,7 +134,8 @@ export function shotProfile(match, score90, pressure, extraTime = hasExtraTime(m
   if (!Array.isArray(match.shotmap) || !match.shotmap.length) return missing;
   const shots = Array(6).fill(0), chances = Array(6).fill(0), sides = [0, 0];
   const sideWindows = [Array(6).fill(0), Array(6).fill(0)];
-  const goals = [];
+  const goals = [], opportunities = [], addedByHalf = [0, 0];
+  let missingSide = false;
   let xg = 0, xgCount = 0, xgotCount = 0, extraShots = 0, difficultSaves = 0;
   let onTarget = 0, measuredOnTarget = 0, woodwork = 0, executionLifts = 0;
   let penaltyShots = 0, penaltyXg = 0, nonPenaltyBigChances = 0, blockedShots = 0;
@@ -116,14 +149,14 @@ export function shotProfile(match, score90, pressure, extraTime = hasExtraTime(m
       if (!ownGoal) extraShots++;
       continue;
     }
-    const clock = regulationClock(period, min, extraTime);
+    const clock = regulationClock(period, min, extraTime, shot.added_time ?? shot.added, shot.period_second);
     if (!clock) return missing;
+    addedByHalf[clock.half-1] = Math.max(addedByHalf[clock.half-1], clock.added);
     const {minute} = clock;
     const bin = Math.floor(Math.max(0, minute - 1) / 15);
     const side = typeof home === 'boolean' ? Number(!home) : null;
     // BSD assigns own goals to the beneficiary. They change the score without an attacking shot.
-    if (type === 'goal') goals.push({...clock, side, added:count(shot.added_time) ? shot.added_time : 0,
-      second:count(shot.period_second) ? shot.period_second : null});
+    if (type === 'goal') goals.push({...clock, side});
     if (ownGoal) continue;
     const hasXg = validShotProbability(shot.xg), hasXgot = validShotProbability(shot.xgot);
     if (shot.sit === 'penalty') {
@@ -151,25 +184,47 @@ export function shotProfile(match, score90, pressure, extraTime = hasExtraTime(m
     if (type === 'post') woodwork++;
     if (!['goal','save','post','block','blocked-off-line','miss'].includes(type)) unknownOutcomes++;
     if (target && hasXg && hasXgot && shot.xgot >= 0.35 && shot.xgot - shot.xg >= 0.25 - 1e-10) executionLifts++;
-    if (type === 'goal' || type === 'post' || (hasXg && shot.xg >= 0.15) || (hasXgot && shot.xgot >= 0.35)) {
+    const certainChance = type === 'goal' || type === 'post' || (hasXgot && shot.xgot >= 0.35);
+    const cutoff = certainChance ? chanceFullXg : Math.min(chanceFullXg, hasXg ? shot.xg : 0);
+    if (cutoff > chanceFloorXg) {
+      if (side === null) missingSide = true;
+      else opportunities.push({...clock, side, cutoff, goal:type === 'goal'});
+    }
+    if (certainChance || (hasXg && shot.xg >= 0.15)) {
       chances[bin]++;
       if (side !== null) { sides[side]++; sideWindows[side][bin]++; }
     }
   }
   if (!sum(shots) && !goals.length) return {...missing, extraShots};
-  const incidentGoals = incidentTimeline(match, score90, extraTime);
-  const timeline = incidentGoals ?? (unknownOutcomes ? null : scoreTimeline(goals, score90));
+  const incidentGoals = incidentGoalEvents(match, extraTime);
+  const incidentScore = incidentGoals && scoreTimeline(incidentGoals, score90);
+  const timeline = incidentScore ?? (unknownOutcomes ? null : scoreTimeline(goals, score90));
+  const verifiedGoals = incidentScore ? incidentGoals : timeline ? goals : null;
+  for (const e of Array.isArray(match.incidents) ? match.incidents : []) {
+    // BSD period markers sort last with added_time=999; only timed play and
+    // announced stoppage time provide evidence of elapsed minutes.
+    if (!e || e.type === 'period' || /shootout/i.test(e.type)) continue;
+    const added = e.type === 'injuryTime' ? e.length : e.added_time;
+    const clock = regulationClock(e.period, e.minute, extraTime, added);
+    if (clock) addedByHalf[clock.half-1] = Math.max(addedByHalf[clock.half-1], clock.added);
+  }
+  for (const e of opportunities) {
+    e.elapsed = e.minute + e.added + (e.half === 2 ? addedByHalf[0] : 0);
+    e.lateThreat = threatensResult(e, verifiedGoals);
+  }
+  const duration = 90 + sum(addedByHalf);
+  const scenarios = chanceScenarios(opportunities, duration, sustainedPressureMinutes(pressure?.values, addedByHalf[0]));
   return {
-    shotsByWindow:shots, chancesByWindow:chances, chanceSides:sides,
+    shotsByWindow:shots, chancesByWindow:chances, chanceSides:missingSide ? null : sides,
     xg90:xgCount === sum(shots) ? Number(xg.toFixed(2)) : null,
     xgCount, xgotCount, difficultSaves, extraShots,
     shotEvidence:{
-      onTarget, measuredOnTarget, woodwork, executionLifts, estimatedXg, unknownXgSource, proxySaves,
+      scenarios, onTarget, measuredOnTarget, woodwork, executionLifts, estimatedXg, unknownXgSource, proxySaves,
       penaltyShots, penaltyXg:Number(penaltyXg.toFixed(2)), nonPenaltyBigChances, blockedShots,
       contestedWindows:sideWindows[0].filter((n, i) => n > 0 && sideWindows[1][i] > 0).length,
       highlightCount:unknownOutcomes ? null : goals.length + woodwork + difficultSaves + proxySaves,
       pressure:pressure ? {minutes:pressure.minutes, swings:pressure.swings} : null,
-      timeline:timeline ? {...timeline, source:incidentGoals ? 'incidents' : 'shotmap'} : null
+      timeline:timeline ? {...timeline, source:incidentScore ? 'incidents' : 'shotmap'} : null
     }
   };
 }

@@ -2,7 +2,7 @@ import {validScore} from './shot-profile.mjs';
 import {matchStyles} from './style-tags.mjs';
 import {publicMatchDetail} from './match-detail.mjs';
 
-export const ruleVersion = 'rate90-1.0.2';
+export const ruleVersion = 'rate90-1.1.0';
 const weights = Object.freeze({threat:25, tempo:15, continuity:20, exchanges:15, highlights:10, suspense:15});
 const sum = values => values.reduce((a, b) => a + b, 0);
 const scaled = (value, full) => Math.min(1, Math.max(0, value / full));
@@ -41,9 +41,9 @@ function highlights(match, chanceCount) {
   return {value:scaled(chanceCount, 12), method:'chance-volume-proxy', count:null};
 }
 
-function suspense(match, chances) {
-  const activity = scaled(sum(chances), 4);
-  const late = scaled(chances[5], 3);
+function suspense(match, chanceCount, lateCount, detailed) {
+  const activity = scaled(chanceCount, 4);
+  const late = scaled(lateCount, 3);
   const timeline = match.shotEvidence?.timeline;
   if (timeline && [timeline.closeMinutes, timeline.lateCloseMinutes, timeline.equalizers,
     timeline.leadReversals, timeline.lateSwingGoals].every(isCount) &&
@@ -57,35 +57,51 @@ function suspense(match, chances) {
   if (validScore(match.score90) && sum(match.score90) === 0) {
     return {value:activity * (0.65 + 0.35 * late), method:'goalless-scoreline'};
   }
-  if (!validScore(match.score90)) return {value:activity * late, method:'late-chances-only'};
+  if (!validScore(match.score90)) return {value:activity * late, method:detailed ? 'unverified-score' : 'late-chances-only'};
   const margin = Math.abs(match.score90[0] - match.score90[1]);
-  return {value:activity * (0.65 * (1 - scaled(margin, 4)) + 0.35 * late), method:'final-margin-and-late-chances'};
+  return {value:activity * (0.65 * (1 - scaled(margin, 4)) + 0.35 * late), method:detailed ? 'final-margin-only' : 'final-margin-and-late-chances'};
+}
+
+function chanceSignals(match, scenario, shotCount) {
+  const chanceCount = sum(scenario.windows), smallerSide = Math.min(...scenario.sides);
+  const balance = chanceCount ? 2 * smallerSide / chanceCount : 0;
+  const exchanges = isCount(scenario.contested) ? 0.7 * balance + 0.3 * scaled(scenario.contested, 3) : balance;
+  const swings = match.shotEvidence?.pressure?.swings;
+  const attackExchange = isCount(swings) ? 0.8 * exchanges + 0.2 * scaled(swings, 5) : exchanges;
+  const moments = highlights(match, chanceCount);
+  const drama = suspense(match, chanceCount, scenario.lateThreats, scenario.longestGap != null);
+  return {
+    tempo:0.55 * scaled(shotCount, 32) + 0.45 * scaled(chanceCount, 10),
+    continuity:scenario.continuity,
+    exchanges:scaled(smallerSide, 3) * attackExchange,
+    highlights:moments.value, suspense:drama.value
+  };
 }
 
 export function rateMatch(match) {
   if (!hasProcess(match)) return {rating:null, recommendation:'资料不足', analysis:null};
   const {shotsByWindow:shots, chancesByWindow:chances, chanceSides:sides, xg90} = match;
-  const shotCount = sum(shots), chanceCount = sum(chances), smallerSide = Math.min(...sides);
-  // Discount half the value of explicitly tagged penalties in the chance-creation dimension.
-  const penaltyXg = match.shotEvidence?.penaltyXg;
+  const shotCount = sum(shots), chanceCount = sum(chances);
+  const evidence = match.shotEvidence;
+  const penaltyXg = evidence?.penaltyXg;
   const discount = Number.isFinite(penaltyXg) && penaltyXg >= 0 && penaltyXg <= xg90 ? penaltyXg * 0.5 : 0;
   const threatXg = xg90 - discount;
   const quiet = longestQuietRun(chances);
-  const balance = chanceCount ? 2 * smallerSide / chanceCount : 0;
-  const contested = match.shotEvidence?.contestedWindows;
-  const exchanges = isCount(contested) ? 0.7 * balance + 0.3 * scaled(contested, 3) : balance;
-  const swings = match.shotEvidence?.pressure?.swings;
-  const attackExchange = isCount(swings) ? 0.8 * exchanges + 0.2 * scaled(swings, 5) : exchanges;
+  // Archived summaries predate the shot clock and contain only six window totals.
+  const scenarios = evidence?.scenarios ?? [{share:1, windows:chances, sides, contested:evidence?.contestedWindows,
+    lateThreats:chances[5], continuity:0.6 * sum(chances.map(v => Math.min(2, v))) / 12 + 0.4 * (1 - quiet / 6)}];
+  const signals = {threat:0.7 * scaled(threatXg, 4) + 0.3 * scaled(threatXg / shotCount, 0.18),
+    tempo:0, continuity:0, exchanges:0, highlights:0, suspense:0};
+  let weightedChances = 0, longestGap = 0, lateThreats = 0;
+  for (const scenario of scenarios) {
+    const values = chanceSignals(match, scenario, shotCount);
+    for (const [key, value] of Object.entries(values)) signals[key] += scenario.share * value;
+    weightedChances += scenario.share * sum(scenario.windows);
+    longestGap += scenario.share * (scenario.longestGap ?? 0);
+    lateThreats += scenario.share * scenario.lateThreats;
+  }
   const moments = highlights(match, chanceCount);
-  const drama = suspense(match, chances);
-  const signals = {
-    threat:0.7 * scaled(threatXg, 4) + 0.3 * scaled(threatXg / shotCount, 0.18),
-    tempo:0.55 * scaled(shotCount, 32) + 0.45 * scaled(chanceCount, 10),
-    continuity:0.6 * sum(chances.map(v => Math.min(2, v))) / 12 + 0.4 * (1 - quiet / 6),
-    exchanges:scaled(smallerSide, 3) * attackExchange,
-    highlights:moments.value,
-    suspense:drama.value
-  };
+  const drama = suspense(match, weightedChances, lateThreats, Boolean(evidence?.scenarios));
   // Integer tenths on the 100-point scale make rounding reproducible, including ties.
   const components = {};
   let tenths = 0;
@@ -97,10 +113,13 @@ export function rateMatch(match) {
   const rating = Math.round(tenths / 10) / 10;
   const recommendation = rating >= 8 ? '看全场' : rating >= 4.5 ? '看集锦' : '可跳过';
   return {rating, recommendation, analysis:{
-    components, shotCount, chanceCount, threatXg:Number(threatXg.toFixed(3)), activeWindows:chances.filter(v => v > 0).length,
+    components, shotCount, chanceCount, weightedChanceCount:Number(weightedChances.toFixed(3)),
+    longestGapMinutes:evidence?.scenarios ? Number(longestGap.toFixed(2)) : null,
+    lateResultChances:evidence?.scenarios && evidence.timeline ? Number(lateThreats.toFixed(3)) : null,
+    threatXg:Number(threatXg.toFixed(3)), activeWindows:chances.filter(v => v > 0).length,
     longestQuietWindows:quiet, lateChances:chances[5], xgPerShot:Number((xg90 / shotCount).toFixed(3)),
     highlightCount:moments.count, highlightMethod:moments.method, suspenseMethod:drama.method,
-    exchangesMethod:isCount(swings) ? 'pressure-and-chances' : isCount(contested) ? 'within-window-and-totals' : 'chance-totals'
+    exchangesMethod:isCount(evidence?.pressure?.swings) ? 'pressure-and-chances' : isCount(evidence?.contestedWindows) ? 'within-window-and-totals' : 'chance-totals'
   }};
 }
 

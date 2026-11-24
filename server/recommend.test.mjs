@@ -96,7 +96,7 @@ test('regulation time includes added time in its own half and excludes extra tim
   assert.equal(m.xg90, 0.5);
   assert.equal(m.extraShots, 1);
   assert.equal(m.score90, null);
-  assert.equal(rateMatch(m).analysis.suspenseMethod, 'late-chances-only');
+  assert.equal(rateMatch(m).analysis.suspenseMethod, 'unverified-score');
   assert.equal(rateMatch(summarize({...raw, shotmap:[shot(97,true)]})).rating, null);
   for (const extra of [{period:'AET'}, {incidents:[{type:'substitution',period:3}]}]) {
     const match = summarize({...event,...extra,shotmap:[shot(97,true)]});
@@ -129,8 +129,8 @@ test('verified equalizers, reversals and late goals outperform an early settled 
   assert.deepEqual(detail.shotEvidence.timeline, {closeMinutes:90, lateCloseMinutes:15, equalizers:1, leadReversals:1, lateSwingGoals:1, source:'shotmap'});
   assert.ok(rateShots(late,fields).analysis.components.suspense.points > rateShots(early,fields).analysis.components.suspense.points);
   const mismatched = rateShots(late,{home_score:2,away_score:1});
-  assert.equal(mismatched.analysis.suspenseMethod, 'final-margin-and-late-chances');
-  assert.equal(rateShots([shot(88,true,'goal'),shot(88,false,'goal')],{home_score:1,away_score:1}).analysis.suspenseMethod, 'final-margin-and-late-chances');
+  assert.equal(mismatched.analysis.suspenseMethod, 'final-margin-only');
+  assert.equal(rateShots([shot(88,true,'goal'),shot(88,false,'goal')],{home_score:1,away_score:1}).analysis.suspenseMethod, 'final-margin-only');
 });
 
 test('incident reconstruction requires a matching score; pressure uses well-covered neighbouring spells', () => {
@@ -223,4 +223,62 @@ test('vendor client propagates Retry-After and stops a never-ending calendar res
   const endless=createBsdClient('test',async()=>{pages++;return Response.json({results:[event],next:true});});
   await assert.rejects(endless.list(1,...dayBounds('2026-11-22')),/50 页/);
   assert.equal(pages,50);
+});
+
+test('marginal chances contribute smoothly, even when they enter the last window', () => {
+  const sample = xg => rateShots([shot(21,false,'post',0.08), shot(84,true,'miss',xg)]);
+  assert.equal(sample(0.10).analysis.weightedChanceCount, 1);
+  assert.equal(sample(0.15).analysis.weightedChanceCount, 1.5);
+  assert.equal(sample(0.20).analysis.weightedChanceCount, 2);
+  const below = sample(0.1499), above = sample(0.1501);
+  assert.ok(Math.abs(above.rating - below.rating) < 0.11);
+  assert.ok(Math.abs(above.analysis.longestGapMinutes - below.analysis.longestGapMinutes) < 0.1);
+  assert.equal(rateShots([shot(10,null,'miss',0.12)]).rating, null);
+});
+
+test('only attempts that could equalize or go ahead earn late threat credit', () => {
+  const base = [shot(18,true,'goal',0.2), shot(22,false,'post'), shot(31,true,'miss',0.30)];
+  const late = side => rateShots([...base, ...[78,84,88].map(min => shot(min,side,'miss',0.3))], {home_score:1});
+  assert.equal(late(false).analysis.lateResultChances,3);
+  assert.equal(late(true).analysis.lateResultChances,0);
+  assert.ok(late(false).analysis.components.suspense.points > late(true).analysis.components.suspense.points);
+  assert.deepEqual(late(false).analysis.components.threat,late(true).analysis.components.threat);
+  const tied = rateShots([shot(84,true,'miss',0.3), shot(85,false,'miss',0.3)]);
+  assert.equal(tied.analysis.lateResultChances,2);
+});
+
+test('late attribution respects stoppage, seconds and unresolved same-minute order', () => {
+  const resolve = (min,added,second) => rateShots([
+    shot(20,true,'goal',0.2),shot(90,true,'goal',0.2,{added:3,period_second:2870}),
+    shot(min,false,'miss',0.3,{added,period_second:second})
+  ],{home_score:2}).analysis.lateResultChances;
+  assert.equal(resolve(90,2),1);
+  assert.equal(resolve(90,4),0);
+  assert.equal(resolve(93,undefined,2869),1);
+  assert.equal(resolve(90,3,2871),0);
+  assert.equal(resolve(90,3),0);
+});
+
+test('actual time between chances distinguishes matches with identical six-window totals', () => {
+  const sample = (minutes, extra) => rateShots(minutes.map((min,i) => shot(min,i % 2 === 0,'miss',0.3)),extra);
+  const steady = sample([8,23,38,53,68,83]);
+  const clustered = sample([1,30,31,60,61,90]);
+  assert.equal(steady.analysis.longestGapMinutes,15);
+  assert.equal(clustered.analysis.longestGapMinutes,29);
+  assert.ok(steady.analysis.components.continuity.points > clustered.analysis.components.continuity.points);
+  const markers = [{type:'period',minute:45,added_time:999},{type:'period',minute:999}];
+  assert.deepEqual(sample([8,23,38,53,68,83],{incidents:markers}),steady);
+  assert.equal(sample([40,60],{incidents:[{type:'injuryTime',minute:90,length:15}]}).analysis.longestGapMinutes,45);
+});
+
+test('only sustained, covered pressure adds partial credit in quiet minutes', () => {
+  const shots = [shot(8,true,'miss',0.2), shot(80,false,'miss',0.2)];
+  const measure = values => rateShots(shots,{momentum:values.map((v,i) => ({m:i+1,v}))}).analysis.components.continuity.points;
+  const trace = Array(90).fill(0);
+  const baseline = measure(trace);
+  trace.fill(60,20,22);
+  assert.equal(measure(trace),baseline);
+  trace.fill(60,20,33);
+  assert.ok(measure(trace)>baseline);
+  assert.equal(measure(trace.slice(0,60)),baseline);
 });

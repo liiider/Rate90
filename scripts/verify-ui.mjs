@@ -97,7 +97,7 @@ function assertMainCard(document) {
   const entry = card(document, mainMatch);
   assert.match(visibleText(entry), /曼城/);
   assert.match(visibleText(entry), /富勒姆/);
-  assert.equal(entry.querySelector('.score-block').textContent.trim(), '6.6');
+  assert.equal(entry.querySelector('.score-block').textContent.trim(), '6.5');
   const tagged = card(document,taggedMatch);
   for (const label of styles) {
     const icon = tagged.querySelector('[aria-label="' + label + '"]');

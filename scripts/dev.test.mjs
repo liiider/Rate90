@@ -55,7 +55,7 @@ test('the home server returns the shipped match list and loads the same match wi
   assert.equal(list.statusCode, 200);
   assert.match(list.headers.get('content-type'), /application\/json/);
   const listMatch = JSON.parse(list.body).matches.find(m => m.id === '209642');
-  assert.equal(listMatch?.rating, 6.6);
+  assert.equal(listMatch?.rating, 6.5);
   assert.equal(listMatch.details, undefined);
   const full = await request(url + '&details=1');
   assert.equal(full.statusCode, 200);
