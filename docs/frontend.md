@@ -1,26 +1,19 @@
 # Rate90 前端协作
 
-入口为 `public/index.html`。从文件夹双击可以浏览离线样本。项目根目录运行 `npm.cmd run dev` 后，可从 `http://127.0.0.1:3000/` 打开接口版。
+`public/index.html` 支持直接打开，也可通过 `npm run dev` 在本地访问。首页与轮次页读取静态数据，实时比赛日接口单独提供服务。
 
 | 内容 | 入口或文件 | 数据 |
 | --- | --- | --- |
-| 昨夜比赛 | `/` | 按北京时间请求 `/api/matches?date=YYYY-MM-DD` |
-| 固定样本 | `/?view=night&date=2026-11-22&source=sample` | 五大联赛 10 场。11 月 5 日另有欧冠 2 场 |
-| 中文复刻 | `/?view=round&league=pl` | 六项赛事各收录相邻三个轮次，快照日期为 2026-11-22 |
-| 队名和队徽 | `public/ui/data/teams.js`、`public/ui/crests/` | 供应商英文名及中文显示名。未匹配的新球队显示接口名称 |
-| 页面与交互 | `public/ui/views.js`、`components.js`、`app.js` | 赛事、比赛周、榜单、收藏、弹窗和设置 |
-| 数据适配 | `public/ui/catalog.js` | 赛事与球队映射、看球日、比分延迟加载 |
+| 高分榜 | `/` | 按展示评分排序，可筛选赛事、轮次范围及最低分 |
+| 比赛周 | `/?view=round&league=pl` | 欧冠和五大联赛各三个轮次 |
+| 原始快照 | `public/ui/data/fixtures.js` | 比赛 ID、轮次、双方球队和 MustWatch90 参考分 |
+| 自动采集 | `public/ui/data/collected-index.js` 与 `collected/` | 赛程、已采集评分及按需读取的比赛日详情 |
+| 样本过程分 | `public/ui/data/process-ratings.js` | 由后端生成的比赛 ID、看球日、Rate90 评分及算法版本 |
+| 队名与队徽 | `public/ui/data/teams.js`、`public/ui/crests/` | 球队 ID、英文名与中文显示名 |
+| 揭晓 | `public/ui/catalog.js` | 按需读取比分和对应比赛日的分段数据与推荐依据 |
 
-## API 对接
+赛季快照采集于 2026-11-22。榜单合并最新赛程和原始快照，优先使用已采集的 Rate90 过程分，再使用样本过程分或 MustWatch90 参考分。单场详情注明评分来源。初始列表只加载赛程、评分与队名，用户揭晓后加载 `results.js` 和对应比赛日的详情。队徽取自原站使用的 BSD Sports 图片，赛事标识来自原站可见的赛事图片。中国大陆观看入口使用详情列出的平台首页。
 
-接口字段以 `docs/matches-api.md` 为准。列表直接采用服务端返回的排序和建议。切换联赛只筛选当前列表。首选优先使用服务端的 `topPick`，筛选后可取榜内排在首位的全场或集锦建议。
+更新算法或 BSD 样本后执行 `node scripts/build-offline-sample.mjs`，再执行 `npm test`。实时接口、固定算法和评分明细见 [比赛接口](matches-api.md)。
 
-用户点击揭晓时，请求同一比赛日及来源的 `reveal=1` 响应，再按比赛 ID 展示该场的比分、机会说明和分时段射门。列表、分享链接和详情初始状态不包含比分。缓存仅保存无剧透列表。
-
-实时源不可用时保留该日已缓存的列表。项目的两个联调日还可以读取静态样本，并在页面标明来源。接口端改动推荐逻辑或联调样本后，可运行 `node scripts/build-offline-sample.mjs` 更新离线样本。
-
-## 赛季参考快照
-
-比赛周、参考评分和积分快照来自 2026-11-22 可见的 MustWatch90 页面。参考分沿用原站的 0–10 分。昨夜推荐由 Rate90 接口给出。队徽取自原站使用的 BSD Sports 图片，赛事标识来自原站可见的赛事图片。中国大陆观看入口使用详情中列出的平台首页。
-
-`public/world-cup-2022.html` 保留项目原有的世界杯分析页，可从「关于 Rate90」进入。
+`public/world-cup-2022.html` 保留世界杯历史样本，可从「关于 Rate90」进入。

@@ -1,5 +1,7 @@
+import {pressureProfile, shotProfile, validScore} from './shot-profile.mjs';
+
 const HOST = 'https://sports.bzzoiro.com';
-const LEAGUES = new Map([[1,'英超'],[3,'西甲'],[4,'意甲'],[5,'德甲'],[6,'法甲'],[7,'欧冠']]);
+export const LEAGUES = new Map([[1,'英超'],[3,'西甲'],[4,'意甲'],[5,'德甲'],[6,'法甲'],[7,'欧冠']]);
 const hasNumber = Number.isFinite;
 
 export function beijingDate(now = new Date()) {
@@ -14,74 +16,63 @@ export function dayBounds(day) {
 }
 
 export function summarize(match) {
-  const result = {
-    id: String(match.id), stage: LEAGUES.get(match.league?.id) || match.league?.name,
-    kickoff: match.event_date, home: match.home_team, away: match.away_team,
-    score90: !match.extra_time_score && !match.penalty_shootout &&
-      [match.home_score,match.away_score].every(hasNumber) ? [match.home_score,match.away_score] : null,
-    shotsByWindow: null, chancesByWindow: null, chanceSides: null, xg90: null, xgCount: 0,
-    xgotCount: 0, difficultSaves: 0, extraShots: 0
+  const pressure = pressureProfile(match.momentum);
+  const scores = [match.home_score, match.away_score];
+  const score90 = !match.extra_time_score && !match.penalty_shootout && validScore(scores) ? scores : null;
+  return {
+    id:String(match.id), stage:LEAGUES.get(match.league?.id) || match.league?.name,
+    kickoff:match.event_date, home:match.home_team, away:match.away_team,
+    score90, pressureMinutes:pressure?.values ?? null, ...shotProfile(match, score90, pressure)
   };
-  if (!Array.isArray(match.shotmap) || !match.shotmap.length) return result;
-  const bins = Array(6).fill(0), chances = Array(6).fill(0), sides = [0,0];
-  let xg = 0;
-  for (const s of match.shotmap) {
-    if (s.period === 5 || /shoot.?out/i.test(s.sit || '')) continue;
-    if (!hasNumber(s.min) || s.min < 0) return {...result, shotsByWindow:null};
-    if (s.period === 3 || s.period === 4 || (match.extra_time_score && s.min > 90)) {
-      result.extraShots++;
-      continue;
-    }
-    const bin = Math.min(5, Math.floor(Math.max(0, s.min - 1) / 15));
-    bins[bin]++;
-    if (hasNumber(s.xg)) { xg += s.xg; result.xgCount++; }
-    if (hasNumber(s.xgot)) result.xgotCount++;
-    if (s.type === 'save' && s.xgot >= 0.35) result.difficultSaves++;
-    if (s.type === 'goal' || s.type === 'post' || s.xg >= 0.15 || s.xgot >= 0.35) {
-      chances[bin]++;
-      if (typeof s.home === 'boolean') sides[s.home ? 0 : 1]++;
-    }
-  }
-  const n = bins.reduce((a,b)=>a+b,0);
-  if (n === 0) return result;
-  Object.assign(result, {shotsByWindow:bins, chancesByWindow:chances, chanceSides:sides,
-    xg90:result.xgCount === n ? Number(xg.toFixed(2)) : null});
-  return result;
 }
 
-export async function loadDay(day, token, fetchImpl = fetch) {
-  const [start,end] = dayBounds(day);
+export function createBsdClient(token, fetchImpl = fetch) {
   if (!token) throw new Error('未配置 BSD_API_TOKEN');
   async function get(path, params) {
     const url = new URL(path, HOST);
     url.search = new URLSearchParams(params).toString();
     const response = await fetchImpl(url, {headers:{Authorization:'Token '+token,Accept:'application/json'},
-      redirect:'error', signal:AbortSignal.timeout(8000)});
-    if (!response.ok) throw new Error('BSD HTTP '+response.status);
+      redirect:'error', signal:AbortSignal.timeout(8000)}).catch(error => {
+      throw new Error('BSD 网络请求失败 (' + (error.cause?.code || error.name) + ')',{cause:error});
+    });
+    if (!response.ok) throw Object.assign(new Error('BSD HTTP '+response.status), {status:response.status});
     return response.json();
   }
-  const groups = await Promise.all([...LEAGUES.keys()].map(async league => {
+  async function list(league, start, end, status) {
     const games = [];
-    for(let offset=0;;offset+=100) {
-      const page=await get('/api/events/', {league,status:'finished',date_from:start.toISOString().slice(0,10),
-        date_to:end.toISOString().slice(0,10),limit:100,offset});
-      if (!Array.isArray(page.results)) throw new Error('BSD 缺少赛程列表');
-      for (const m of page.results) {
-        const at=Date.parse(m.event_date);
-        if (m.league?.id===league && m.status==='finished' && at>=+start && at<+end && Number.isSafeInteger(m.id)) games.push(m);
+    for (let page = 1;; page++) {
+      const params = {league, date_from:start.toISOString().slice(0,10),
+        date_to:new Date(+end - 1).toISOString().slice(0,10), page};
+      if (status) params.status = status;
+      const result = await get('/api/events/', params);
+      if (!Array.isArray(result.results)) throw new Error('BSD 缺少赛程列表');
+      for (const event of result.results) {
+        const at = Date.parse(event.event_date);
+        if (event.league?.id === league && Number.isSafeInteger(event.id) && at >= +start && at < +end &&
+            (!status || event.status === status)) games.push(event);
       }
-      if (!page.next || !page.results.length) break;
+      if (!result.next || !result.results.length) return games;
     }
-    return games;
-  }));
+  }
+  async function event(id, full = false) {
+    const result = await get('/api/events/' + id + '/', full ? {full:'true'} : {});
+    if (result.id !== id) throw new Error('BSD 场次不一致');
+    return result;
+  }
+  return {list, event};
+}
+
+export async function loadDay(day, token, fetchImpl = fetch) {
+  const [start,end] = dayBounds(day);
+  const client = createBsdClient(token, fetchImpl);
+  const groups = await Promise.all([...LEAGUES.keys()].map(league => client.list(league, start, end, 'finished')));
   const fixtures=[...new Map(groups.flat().map(m=>[m.id,m])).values()];
   const matches=[];
   let failed=0;
   for(let i=0;i<fixtures.length;i+=4) {
     const batch=await Promise.all(fixtures.slice(i,i+4).map(async fixture=>{
       try {
-        const detail=await get('/api/events/'+fixture.id+'/',{full:'true'});
-        if (detail.id!==fixture.id) throw new Error('场次不一致');
+        const detail=await client.event(fixture.id, true);
         return summarize(detail);
       } catch {
         failed++;

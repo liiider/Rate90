@@ -1,236 +1,535 @@
 (async () => {
-'use strict';
-const {beijingDay,dayOffset,escapeHtml:e,feedPath,asset,json,sampleFeed,sampleDays,leagues,loadCatalog,matchKey,pages,readStore,roundName,snapshotDate,writeStore}=window.Rate90.catalog;
-const {action,club,crest,dialogTitle,empty,evidence,heroIcon,icon,logo,miniCard,navigation,ring,tier}=window.Rate90.components;
-const {archiveView,dailyView,favoriteView,roundView,seasonView,topView}=window.Rate90.views;
+  'use strict';
 
-const $=id=>document.getElementById(id);
-const dialog=$('overlay');
-const freshTop=()=>({league:'all',period:'round',min:6,query:''});
-const localFile=location.protocol==='file:';
-const routeParams=()=>new URLSearchParams(localFile?location.hash.slice(1):location.search);
-function routeFromUrl(){
-  const p=routeParams(),view=Object.hasOwn(pages,p.get('view'))?p.get('view'):'night';
-  let league=p.get('league');
-  if(!Object.hasOwn(leagues,league))league=view==='night'?'all':'pl';
-  const requested=Number(p.get('round')),current=leagues[league]?.round||11;
-  const round=Math.abs(requested-current)<=1?requested:current;
-  const day=p.get('date'),valid=/^\d{4}-\d{2}-\d{2}$/.test(day||'')&&Number.isFinite(Date.parse(day))&&new Date(day).toISOString().startsWith(day);
-  return {view,league,round,date:valid?day:location.protocol==='file:'?snapshotDate:beijingDay(),source:location.protocol==='file:'||p.get('source')==='sample'?'sample':'live',match:p.get('match')||''};
-}
-const s={route:routeFromUrl(),catalog:null,feed:null,daily:[],loading:false,min:0,top:freshTop(),table:null,tableError:false,showSeason:false,
- favTeams:new Set(readStore('teams',[])),favMatches:new Map(readStore('matches',[])),revealed:new Set(),details:new Map(),detailLoads:new Map(),theme:readStore('theme','dark'),
- allMatches(){return [...this.catalog.archive,...this.daily]}};
-let controller,request=0,routeVersion=0,modal=null,archiveResults=null,archiveRequest=null;
-function theme(){document.documentElement.dataset.theme=s.theme==='system'?(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'):s.theme}
-theme();matchMedia('(prefers-color-scheme: light)').addEventListener('change',theme);
-const notify=text=>{$('notice').textContent=text};
-const cacheKey=(r)=>'feed.'+r.date+'.'+r.source;
-function safeFeed(feed,r){
-  if(feed?.day!==r.date||!['live','sample'].includes(feed.mode)||!Array.isArray(feed.matches))throw Error('比赛日格式错误');
-  const {day,mode,updatedAt,partial,capturedOn,ruleVersion,update}=feed;
-  const matches=feed.matches.filter(m=>m&&m.id!=null&&m.home&&m.away&&Number.isFinite(Date.parse(m.kickoff))).map(m=>{
-    const {id,home,away,stage,kickoff,recommendation,topPick}=m;
-    return {id,home,away,stage,kickoff,recommendation,topPick};
+  const {
+    defaultMatchDate,
+    leagues,
+    escapeHtml: e,
+    readStore,
+    writeStore,
+    loadCatalog,
+    loadMatchDetails,
+    loadViewingProfile,
+    ratingTier,
+    dayOffset,
+    isValidDate,
+    cnDate,
+    roundName,
+    venueFor
+  } = window.Rate90.catalog;
+
+  const {
+    icon,
+    leagueRail,
+    crest,
+    viewingPreview,
+    miniMatchRow,
+    dialogHead,
+    revealedEvidence
+  } = window.Rate90.components;
+
+  const { dateView, roundView, allView } = window.Rate90.views;
+
+  const $ = id => document.getElementById(id);
+  const dialog = $('overlay');
+  const localFile = location.protocol === 'file:';
+
+  const routeParams = () => new URLSearchParams(localFile ? location.hash.slice(1) : location.search);
+
+  function routeFromUrl(catalog = null) {
+    const p = routeParams();
+    const rawView = p.get('view');
+    const view = ['date', 'round', 'all'].includes(rawView) ? rawView : 'date';
+
+    let league = p.get('league');
+    if (view === 'round') {
+      if (!Object.hasOwn(leagues, league)) league = 'pl';
+    } else if (!Object.hasOwn(leagues, league)) {
+      league = 'all';
+    }
+
+    const roundLeague = Object.hasOwn(leagues, league) ? league : 'pl';
+    const fallbackRound = catalog ? catalog.latestRatedRound[roundLeague] : leagues[roundLeague].round;
+    const requested = Number(p.get('round'));
+    const validRound = catalog
+      ? catalog.matches.some(m => m.league === roundLeague && m.round === requested)
+      : Math.abs(requested - fallbackRound) <= 1;
+
+    const rawDate = p.get('date');
+    const date = isValidDate(rawDate) ? rawDate : defaultMatchDate;
+
+    return {
+      view,
+      league,
+      round: validRound ? requested : fallbackRound,
+      date,
+      match: p.get('match') || ''
+    };
+  }
+
+  const state = {
+    catalog: null,
+    route: routeFromUrl(),
+    bookmarks: new Set(readStore('bookmarks', [])),
+    theme: readStore('theme', 'light'),
+    revealed: new Set(),
+    previews: new Map(),
+    details: new Map(),
+    loadingDetail: new Set(),
+    detailError: new Set()
+  };
+
+  let modal = null;
+
+  function applyTheme() {
+    const isDark = state.theme === 'dark';
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', isDark ? '#0B0D0C' : '#F5F3ED');
+  }
+
+  applyTheme();
+
+  function announce(msg) {
+    $('live-status').textContent = msg;
+  }
+
+  let railMounted = false;
+  let lastTopBarSig = '';
+
+  function renderTopBar() {
+    const count = state.bookmarks.size;
+    const isDark = state.theme === 'dark';
+    const sig = count + ':' + isDark;
+    if (sig === lastTopBarSig) return;
+    lastTopBarSig = sig;
+    $('top-actions').innerHTML =
+      '<button type="button" class="icon-btn" data-act="search" title="搜索球队 (Ctrl K)" aria-label="搜索球队">' + icon('search') + '</button>' +
+      '<button type="button" class="icon-btn" data-act="bookmarks" title="我的收藏" aria-label="我的收藏">' +
+        icon(count ? 'bookmarkFilled' : 'bookmark') +
+        (count ? '<span class="icon-badge">' + count + '</span>' : '') +
+      '</button>' +
+      '<button type="button" class="icon-btn" data-act="theme" title="' + (isDark ? '切换浅色画报主题' : '切换深色炭黑主题') + '" aria-label="切换明暗主题">' +
+        icon(isDark ? 'sun' : 'moon') +
+      '</button>';
+  }
+
+  function syncLeagueRail(league) {
+    const rail = $('league-rail');
+    if (!railMounted) {
+      rail.innerHTML = leagueRail(league);
+      railMounted = true;
+      return;
+    }
+    const items = rail.querySelectorAll?.('.rail-item') || [];
+    for (const item of items) {
+      const active = item.dataset.val === league;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-pressed', String(active));
+    }
+  }
+
+  function render() {
+    if (!state.catalog) return;
+    renderTopBar();
+    const { view, league, date } = state.route;
+    syncLeagueRail(league);
+
+    const viewTitle = view === 'round'
+      ? leagues[league === 'all' ? 'pl' : league].short + '轮次'
+      : view === 'all'
+        ? (league === 'all' ? '全部比赛' : leagues[league].short)
+        : cnDate(date);
+    document.title = viewTitle + ' · Rate90';
+
+    const views = { date: dateView, round: roundView, all: allView };
+    $('view').innerHTML = views[view](state);
+  }
+
+  function navigate(changes, push = true) {
+    const p = routeParams();
+    const nextView = changes.view || state.route.view;
+    p.set('view', nextView);
+    p.delete('match');
+
+    let nextLeague = changes.league !== undefined ? changes.league : state.route.league;
+    if (nextView === 'round' && nextLeague === 'all') nextLeague = 'pl';
+    if (nextLeague === 'all' || !nextLeague) p.delete('league');
+    else p.set('league', nextLeague);
+
+    if (nextView === 'date') {
+      const nextDate = changes.date || state.route.date || defaultMatchDate;
+      p.set('date', nextDate);
+      p.delete('round');
+    } else if (nextView === 'round') {
+      p.delete('date');
+      if (changes.round != null) p.set('round', String(changes.round));
+      else if (changes.league && changes.league !== state.route.league) p.delete('round');
+    } else {
+      p.delete('date');
+      p.delete('round');
+    }
+
+    if (push) {
+      const qs = p.toString();
+      history.pushState(null, '', qs ? (localFile ? '#' : '?') + qs : location.pathname);
+    }
+
+    const prevView = state.route.view;
+    state.route = routeFromUrl(state.catalog);
+    closeModal();
+    render();
+    if (prevView !== state.route.view) window.scrollTo(0, 0);
+  }
+
+  function showDialog(html, labelledBy = 'dialog-title') {
+    $('dialog-body').innerHTML = html;
+    dialog.setAttribute('aria-labelledby', labelledBy);
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function closeModal() {
+    modal = null;
+    if (dialog.open) dialog.close();
+  }
+
+  function openModal(type, id = '') {
+    modal = { type, id };
+    renderModal();
+    if (type === 'search') $('team-query')?.focus();
+    if (type === 'details') ensurePreview(id);
+  }
+
+  async function ensurePreview(matchId) {
+    const m = state.catalog?.byId.get(matchId);
+    if (!m || !m.hasPreview || state.previews.has(m.id)) return;
+    try {
+      const viewing = await loadViewingProfile(m.id);
+      state.previews.set(m.id, viewing);
+      if (modal?.type === 'details' && modal.id === matchId) renderModal();
+    } catch {}
+  }
+
+  function teamSearchList(query) {
+    const q = query.trim().toLowerCase();
+    const list = (q
+      ? state.catalog.teams.filter(t => (t.zh + ' ' + t.en).toLowerCase().includes(q))
+      : state.catalog.teams.slice(0, 16)
+    ).slice(0, 40);
+
+    if (!list.length) {
+      return '<div class="state-card">没有找到匹配的球队。</div>';
+    }
+    return list.map(t =>
+      '<button type="button" class="team-option" data-act="team" data-val="' + e(t.id) + '">' +
+        crest(t, 'sm') + '<b>' + e(t.zh) + '</b><small>' + e(t.en) + '</small>' +
+      '</button>'
+    ).join('');
+  }
+
+  function renderModal() {
+    if (!modal) return;
+    const { type, id } = modal;
+
+    if (type === 'search') {
+      showDialog(
+        dialogHead('搜索球队', '欧冠与五大联赛') +
+        '<input class="search-input" id="team-query" type="search" placeholder="输入中文或英文队名，如 曼联、Real Madrid" aria-label="搜索球队">' +
+        '<div class="modal-list" id="search-results">' + teamSearchList('') + '</div>'
+      );
+      return;
+    }
+
+    if (type === 'team') {
+      const t = state.catalog.team(id);
+      const matches = state.catalog.matches
+        .filter(m => m.home.id === id || m.away.id === id)
+        .sort((a, b) => b.date.localeCompare(a.date));
+
+      showDialog(
+        dialogHead(t.zh, t.en) +
+        '<div class="modal-list">' +
+          (matches.length ? matches.map(miniMatchRow).join('') : '<div class="state-card">暂无已收录比赛。</div>') +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<button type="button" class="text-btn" data-act="search">← 返回搜索</button>' +
+        '</div>'
+      );
+      return;
+    }
+
+    if (type === 'bookmarks') {
+      const saved = [...state.bookmarks].map(mid => state.catalog.byId.get(mid)).filter(Boolean);
+      showDialog(
+        dialogHead('我的收藏', saved.length + ' 场待看') +
+        '<div class="modal-list">' +
+          (saved.length ? saved.map(miniMatchRow).join('') : '<div class="state-card">还没有收藏比赛。打开任意场次详情即可加入待看。</div>') +
+        '</div>'
+      );
+      return;
+    }
+
+    if (type === 'about') {
+      showDialog(
+        dialogHead('关于本站') +
+        '<div class="about-copy">' +
+          '<p><strong>先看评分，再决定是否回看。</strong>用 0–10 评分呈现欧冠与欧洲五大联赛的比赛观赏价值，默认隐藏全部比分，让你在不被剧透的前提下挑选值得花 90 分钟的场次。</p>' +
+          '<p><strong>静态评分快照。</strong>当前收录 2026/27 赛季共 198 场赛程（含 95 场已评比赛与 103 场未开赛赛程），比分仅在你主动点击揭晓后按需读取。部分重点场次揭晓后还附带每 15 分钟射门节奏与 xG 参考。</p>' +
+        '</div>' +
+        '<div class="modal-actions">' +
+          '<a class="btn" href="./world-cup-2022.html">2022 世界杯历史样本 ' + icon('external') + '</a>' +
+        '</div>'
+      );
+      return;
+    }
+
+    if (type === 'details') {
+      const m = state.catalog.byId.get(id);
+      if (!m) { closeModal(); return; }
+
+      const l = leagues[m.league];
+      const tier = ratingTier(m.rating);
+      const upcoming = m.rating === null;
+      const saved = state.bookmarks.has(m.id);
+      const shown = state.revealed.has(m.id);
+      const loading = state.loadingDetail.has(m.id);
+      const hasErr = state.detailError.has(m.id);
+      const details = state.details.get(m.id);
+      const [venueName, venueUrl] = venueFor(m.league);
+
+      const metaParts = [l.short, roundName(m.league, m.round), cnDate(m.date)];
+      if (m.time) metaParts.push(m.time);
+
+      const centerPlaque = upcoming
+        ? '<div class="detail-plaque upcoming"><div class="plaque-num">—</div></div>'
+        : '<div class="detail-plaque ' + tier.cls + '"><div class="plaque-num">' + m.rating.toFixed(1) + '<small>/10</small></div></div>';
+
+      let revealArea = '';
+      if (upcoming) {
+        revealArea = '<div class="reveal-muted">本场比赛尚未开赛</div>';
+      } else if (shown && details) {
+        revealArea = '<div class="reveal-opened">' + revealedEvidence(details) + '</div>';
+      } else {
+        revealArea = '<button type="button" class="reveal-shield" data-act="reveal" data-val="' + e(m.id) + '"' + (loading ? ' disabled' : '') + '>' +
+          '<span class="shield-icon">' + icon('eye') + '</span>' +
+          '<span class="shield-title">' + (loading ? '正在读取赛果…' : hasErr ? '读取失败，点击重试' : '点击揭晓比分') + '</span>' +
+          '<span class="shield-sub">比分默认隐藏 · 揭晓后可随时重新收起</span>' +
+        '</button>';
+      }
+
+      const previewHtml = viewingPreview(state.previews.get(m.id), m.styles);
+
+      showDialog(
+        '<div class="detail-bar">' +
+          '<span class="detail-meta" id="dialog-title">' + e(metaParts.join(' · ')) + '</span>' +
+          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭" title="关闭">' + icon('close') + '</button>' +
+        '</div>' +
+        '<div class="duel-stage">' +
+          '<div class="duel-club">' + crest(m.home, 'lg') + '<b>' + e(m.home.zh) + '</b></div>' +
+          centerPlaque +
+          '<div class="duel-club">' + crest(m.away, 'lg') + '<b>' + e(m.away.zh) + '</b></div>' +
+        '</div>' +
+        previewHtml +
+        revealArea +
+        '<div class="modal-actions">' +
+          '<a class="btn primary" href="' + venueUrl + '" target="_blank" rel="noreferrer">前往' + e(venueName) + ' ' + icon('external') + '</a>' +
+          '<button type="button" class="btn' + (saved ? ' active-soft' : '') + '" data-act="toggleBookmark" data-val="' + e(m.id) + '">' +
+            icon(saved ? 'bookmarkFilled' : 'bookmark') + (saved ? '已收藏' : '收藏') +
+          '</button>' +
+          (localFile ? '' : '<button type="button" class="btn push" data-act="copyLink" data-val="' + e(m.id) + '">' + icon('link') + '复制链接</button>') +
+        '</div>' +
+        '<div id="share-feedback" class="feedback-line" role="status"></div>'
+      );
+    }
+  }
+
+  async function revealMatch(matchId) {
+    const m = state.catalog.byId.get(matchId);
+    if (!m || m.rating === null || state.loadingDetail.has(matchId)) return;
+    if (state.details.has(matchId)) {
+      state.revealed.add(matchId);
+      renderModal();
+      return;
+    }
+
+    state.loadingDetail.add(matchId);
+    state.detailError.delete(matchId);
+    renderModal();
+
+    try {
+      const data = await loadMatchDetails(matchId);
+      state.details.set(matchId, data);
+      state.revealed.add(matchId);
+    } catch {
+      state.detailError.add(matchId);
+    } finally {
+      state.loadingDetail.delete(matchId);
+      renderModal();
+    }
+  }
+
+  async function copyMatchLink(matchId) {
+    const m = state.catalog.byId.get(matchId);
+    if (!m) return;
+    const url = new URL(location.href);
+    url.search = '';
+    url.hash = '';
+    url.searchParams.set('view', 'date');
+    url.searchParams.set('date', m.date);
+    url.searchParams.set('match', m.id);
+    try {
+      await navigator.clipboard.writeText(url.href);
+      if ($('share-feedback')) $('share-feedback').textContent = '已复制无剧透比赛链接。';
+    } catch {
+      if ($('share-feedback')) $('share-feedback').textContent = url.href;
+    }
+  }
+
+  function stepCurrent(delta) {
+    const { view, league, round, date } = state.route;
+    if (view === 'date') {
+      navigate({ view: 'date', date: dayOffset(date, delta) });
+      return;
+    }
+    if (view === 'round') {
+      const target = round + delta;
+      if (state.catalog.matches.some(m => m.league === league && m.round === target)) {
+        navigate({ view: 'round', league, round: target });
+      }
+    }
+  }
+
+  dialog.addEventListener('cancel', () => { modal = null; });
+  dialog.addEventListener('click', ev => {
+    if (ev.target === dialog) {
+      const r = dialog.getBoundingClientRect();
+      if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) {
+        closeModal();
+      }
+    }
   });
-  return {day,mode,updatedAt,partial,capturedOn,ruleVersion,update,matches};
-}
-function acceptFeed(feed){s.feed=feed;s.daily=feed.matches.map(m=>s.catalog.daily(m,feed))}
-async function loadDaily(){
-  const r={...s.route},token=++request;controller?.abort();controller=new AbortController();
-  s.loading=true;s.feed=null;s.daily=[];s.details.clear();s.revealed.clear();s.detailLoads.clear();
-  const cached=readStore(cacheKey(r),null);
-  if(cached){try{acceptFeed({...safeFeed(cached,r),cached:true})}catch{}}
-  render();const timer=setTimeout(()=>controller?.abort(),45000);
-  try{
-    const feed=safeFeed(await json(feedPath(r.date,r.source),controller.signal),r);
-    if(token!==request)return;
-    if(!(r.source==='live'&&feed.mode==='sample'&&s.feed?.mode==='live')){
-      acceptFeed(feed);writeStore(cacheKey(r),feed);
+
+  document.addEventListener('click', async ev => {
+    const btn = ev.target.closest('[data-act]');
+    if (!btn) return;
+    const { act, val } = btn.dataset;
+
+    switch (act) {
+      case 'home':
+        ev.preventDefault();
+        navigate({ view: 'date', league: 'all', date: defaultMatchDate });
+        break;
+      case 'view':
+        navigate({ view: val });
+        break;
+      case 'league':
+        if (val === 'all' && state.route.view === 'round') {
+          navigate({ view: 'date', league: 'all' });
+        } else {
+          navigate({ league: val });
+        }
+        break;
+      case 'prevDay':
+        stepCurrent(-1);
+        break;
+      case 'nextDay':
+        stepCurrent(1);
+        break;
+      case 'jumpDate':
+        navigate({ view: 'date', date: val });
+        break;
+      case 'prevRound':
+        stepCurrent(-1);
+        break;
+      case 'nextRound':
+        stepCurrent(1);
+        break;
+      case 'details':
+        openModal('details', val);
+        break;
+      case 'team':
+        openModal('team', val);
+        break;
+      case 'search':
+      case 'bookmarks':
+      case 'about':
+        openModal(act);
+        break;
+      case 'close':
+        closeModal();
+        break;
+      case 'reveal':
+        await revealMatch(val);
+        break;
+      case 'hideScore':
+        if (modal?.id) {
+          state.revealed.delete(modal.id);
+          renderModal();
+        }
+        break;
+      case 'toggleBookmark':
+        if (state.bookmarks.has(val)) {
+          state.bookmarks.delete(val);
+          announce('已取消收藏');
+        } else {
+          state.bookmarks.add(val);
+          announce('已加入收藏');
+        }
+        writeStore('bookmarks', [...state.bookmarks]);
+        renderTopBar();
+        renderModal();
+        break;
+      case 'copyLink':
+        await copyMatchLink(val);
+        break;
+      case 'theme':
+        state.theme = state.theme === 'dark' ? 'light' : 'dark';
+        writeStore('theme', state.theme);
+        applyTheme();
+        renderTopBar();
+        break;
     }
-  }catch{
-    if(token!==request)return;
-    if(!s.feed&&sampleDays.includes(r.date)){
-      try{
-        const feed=safeFeed(await sampleFeed(r.date),r);
-        if(token===request)acceptFeed(feed);
-      }catch{}
+  });
+
+  document.addEventListener('change', ev => {
+    if (ev.target.id === 'date-picker' && isValidDate(ev.target.value)) {
+      navigate({ view: 'date', date: ev.target.value });
     }
-  }
-  finally{clearTimeout(timer);if(token===request){s.loading=false;render();openLinkedMatch()}}
-}
-function findMatch(key){return s.allMatches().find(m=>matchKey(m)===key)||s.favMatches.get(key)}
-function pickList(){
-  if(s.route.view==='night'&&s.daily.length)return s.daily.filter(m=>m.recommendation!=='资料不足').slice(0,5);
-  return s.catalog.archive.filter(m=>m.rating!==null&&m.date>=dayOffset(snapshotDate,-3)&&m.date<=snapshotDate).sort((a,b)=>b.rating-a.rating||b.date.localeCompare(a.date)).slice(0,5);
-}
-function activeMatches(){
-  if(s.route.view==='night')return s.daily.filter(m=>s.route.league==='all'||m.league===s.route.league);
-  if(s.route.view==='round')return s.catalog.archive.filter(m=>m.league===s.route.league&&m.round===s.route.round&&(s.min===0||m.rating!==null&&m.rating>=s.min));
-  return [];
-}
-function renderSides(){
-  const picks=pickList(),daily=s.route.view==='night'&&s.daily.length>0,title=daily?'昨夜推荐':'精选比赛';
-  $('side-picks').innerHTML='<h2>'+title+'</h2>'+picks.map(m=>action(crest(m.home,'tiny')+crest(m.away,'tiny')+'<span class="pick-names"><strong>'+e(m.home.zh+' 对 '+m.away.zh)+'</strong><small>'+e(leagues[m.league]?.short||m.stage)+'</small></span>'+(daily?tier(m.recommendation):ring(m.rating,'sm')),'details',{value:matchKey(m),cls:'side-pick'})).join('');
-  $('mobile-highlights').innerHTML='<h2>'+title+'</h2><div class="mobile-tray">'+picks.map(m=>action(crest(m.home,'tiny')+(daily?tier(m.recommendation):ring(m.rating,'sm'))+crest(m.away,'tiny')+'<small>'+e(m.home.zh+' · '+m.away.zh)+'</small>','details',{value:matchKey(m),cls:'mobile-pick',title:m.home.zh+' 对 '+m.away.zh+'，比赛详情'})).join('')+'</div>';
-  const {view,league}=s.route;
-  const rows=[['当前页面',pages[view][0]],['赛事',leagues[league]?.short||'全部赛事'],['关注球队',s.favTeams.size+' 支'],['收藏比赛',s.favMatches.size+' 场']];
-  $('side-context').innerHTML='<h2>当前视图</h2>'+rows.map(([k,v])=>'<div class="context-row"><span>'+k+'</span><b>'+e(v)+'</b></div>').join('');
-}
-function render(){
-  if(!s.catalog)return;
-  const {view,league}=s.route,l=leagues[league],daily=view==='night';
-  const titles={night:'昨夜比赛，哪场值得回看？',round:'2026/27 赛季 · 无剧透足球回看指南',top:'精选比赛',table:l?.short+'积分榜',stats:l?.short+'赛事统计',archive:'历史比赛周',favorites:'我的收藏'};
-  $('page-title').textContent=titles[view];document.title=pages[view][0]+' · Rate90 足球回看指南';
-  $('subtitle').textContent=daily?'按北京时间收录已完赛场次，先选比赛，再看比分。':'欧冠与欧洲五大联赛 · 2026/27 赛季回看指南';
-  $('leagues').innerHTML=Object.keys(leagues).map(k=>logo(k,true,k===league)).join('');
-  $('nav').innerHTML=navigation(view);$('mobile-view').textContent=pages[view][0]+' ▴';$('content').classList.toggle('round-mode',view==='round');
-  const source=daily?(s.loading?'同步中':s.feed?.cached?'本机缓存':s.feed?.mode==='live'?'已同步':s.feed?.mode==='sample'?'联调样本':'未同步'):'赛季快照';
-  const toolbar='<span class="status '+(source==='已同步'?'live':'')+'"><i></i>'+source+'</span>'+action('搜索 <kbd>Ctrl K</kbd>','search',{symbol:'search'})+
-    (daily?action('刷新','refresh',{symbol:'reload',disabled:s.loading}):'')+action('','settings',{symbol:'settings',cls:'icon-btn',title:'设置'});
-  const revealable=activeMatches().filter(m=>m.origin!=='archive'||m.rating!==null);
-  $('toolbar').innerHTML=toolbar+(revealable.length?action('全部揭晓','revealAll',{symbol:'eye',cls:'btn accent'})+action('全部隐藏','hideAll',{symbol:'lock'}):'');
-  const renderView={night:dailyView,round:roundView,top:topView,table:seasonView,stats:seasonView,archive:archiveView,favorites:favoriteView};
-  $('view').innerHTML=renderView[view](s);renderSides();
-}
-function go(changes,push=true){
-  const p=routeParams(),newView=changes.view||s.route.view;
-  p.set('view',newView);p.delete('match');
-  if(changes.view&&changes.view!==s.route.view){p.delete('round');p.delete('league')}
-  for(const [k,v] of Object.entries(changes)){if(v==null||v==='all')p.delete(k);else p.set(k,v)}
-  if(newView!=='night'){p.delete('date');p.delete('source')}
-  if(push)history.pushState(null,'',(localFile?'#':'?')+p.toString());
-  const prior=s.route;s.route=routeFromUrl();routeVersion++;
-  s.revealed.clear();s.details.clear();s.detailLoads.clear();s.showSeason=false;s.tableError=false;
-  closeModal();
-  if(s.route.view==='night'&&(prior.view!=='night'||s.route.date!==prior.date||s.route.source!==prior.source||!s.feed))loadDaily();
-  else{if(s.route.view!=='night'){request++;controller?.abort();s.loading=false}render();openLinkedMatch()}
-  if(prior.view!==s.route.view)window.scrollTo(0,0);
-}
-function openLinkedMatch(){
-  if(!s.route.match||modal)return;
-  const match=s.route.view==='night'?s.daily.find(m=>m.id===s.route.match):s.catalog.archive.find(m=>m.id===s.route.match);
-  if(match)openModal('details',matchKey(match));
-}
-function show(html){$('dialog-body').innerHTML=html;dialog.setAttribute('aria-labelledby','dialog-title');if(!dialog.open)dialog.showModal()}
-function closeModal(){modal=null;if(dialog.open)dialog.close()}
-dialog.addEventListener('cancel',()=>{modal=null});dialog.addEventListener('click',ev=>{if(ev.target===dialog){const r=dialog.getBoundingClientRect();if(ev.clientX<r.left||ev.clientX>r.right||ev.clientY<r.top||ev.clientY>r.bottom)closeModal()}});
-function openModal(type,key=''){modal={type,key};renderModal();if(type==='search')$('team-query')?.focus()}
-function searchResults(query){
-  const q=query.trim().toLowerCase();const matches=(q?s.catalog.teams.filter(t=>(t.zh+' '+t.en).toLowerCase().includes(q)):s.catalog.teams.filter(t=>s.favTeams.has(t.id))).slice(0,60);
-  return matches.length?matches.map(t=>action(crest(t,'tiny')+'<b>'+e(t.zh)+'</b><small>'+e(t.en)+'</small>','team',{cls:'search-result',value:t.id})).join(''):empty(q?'没有找到这支球队。':'输入球队名称，查找已收录的赛程。');
-}
-function renderModal(){
-  if(!modal)return;
-  const {type,key}=modal;
-  if(type==='navigation'){show(dialogTitle('页面导航')+'<nav class="navlist">'+navigation(s.route.view)+'</nav><div class="actions">'+action('搜索球队','search',{symbol:'search'})+action('设置','settings',{symbol:'settings'})+(activeMatches().length?action('全部揭晓','mobileReveal',{symbol:'eye'})+action('全部隐藏','mobileHide',{symbol:'lock'}):'')+'</div>');return}
-  if(type==='search'){show(dialogTitle('搜索球队')+'<input class="text-input" id="team-query" type="search" placeholder="球队中文名或英文名" aria-label="球队中文名或英文名"><div id="search-results" class="search-list">'+searchResults('')+'</div>');return}
-  if(type==='settings'){show(dialogTitle('显示设置')+'<label class="switch-line">外观<select id="theme-select">'+[['dark','深色'],['light','浅色'],['system','跟随系统']].map(([v,t])=>'<option value="'+v+'"'+(s.theme===v?' selected':'')+'>'+t+'</option>').join('')+'</select></label><p>比赛日使用北京时间。收藏与外观保存在当前设备。</p>');return}
-  if(type==='about'){
-    show(dialogTitle('关于 Rate90','足球回看指南')+'<div class="box"><h3>昨夜比赛</h3><p>每天北京时间中午 12 点划分看球日。Rate90 按关键机会在六个 15 分钟时段的分布及双方创造机会的情况，给出看全场、看集锦、可跳过或资料不足的建议。</p></div><div class="box"><h3>比赛周与评分</h3><p>参考快照收录欧冠和欧洲五大联赛各三个轮次。0–10 分引用 MustWatch90 的回看评分，快照采集于 2026 年 11 月 22 日。昨夜榜单使用 Rate90 的试算规则。</p></div><div class="actions"><a class="btn" href="https://mustwatch90.com/" target="_blank" rel="noreferrer">MustWatch90</a><a class="btn" href="https://sports.bzzoiro.com/" target="_blank" rel="noreferrer">BSD Sports</a><a class="btn" href="./world-cup-2022.html">2022 世界杯历史样本</a></div>');return;
-  }
-  if(type==='team'){
-    const t=s.catalog.team(key),on=s.favTeams.has(key),matches=s.allMatches().filter(m=>m.home.id===key||m.away.id===key),unique=[...new Map(matches.map(m=>[m.id,m])).values()].sort((a,b)=>b.date.localeCompare(a.date));
-    show(dialogTitle(t.zh,t.en)+'<div class="spread">'+crest(t,'big')+action(on?'已关注':'关注球队','star',{value:key,symbol:'star',cls:'btn '+(on?'accent':'')})+'</div><h3 class="section-title">已收录比赛</h3>'+(unique.length?'<div class="grid">'+unique.map(miniCard).join('')+'</div>':empty('暂时没有已载入的比赛。')));return;
-  }
-  const m=findMatch(key);if(!m){closeModal();return}
-  const l=leagues[m.league],saved=s.favMatches.has(key),shown=s.revealed.has(key),details=s.details.get(key);
-  const venue=m.league==='cl'?['爱奇艺','https://www.iqiyi.com/']:m.league==='bl'?['央视频','https://www.yangshipin.cn/']:['咪咕视频','https://www.miguvideo.com/'];
-  const source=m.origin==='daily'?(m.feedMode==='sample'?'BSD 联调样本':'BSD 比赛数据'):'MustWatch90 赛季快照';
-  const top=dialogTitle(m.home.zh+' 对 '+m.away.zh,(l?.short||m.stage||'足球')+' · '+(m.round?roundName(m.league,m.round)+' · ':'')+m.date+(m.time?' '+m.time+' 北京时间':''));
-  const sides=[m.home,m.away].map(t=>'<div class="side">'+crest(t,'big')+'<b>'+e(t.zh)+'</b></div>');
-  const center=m.origin==='archive'?ring(m.rating,'lg'):tier(m.recommendation);
-  const recap='<div class="box duel">'+sides[0]+'<div class="duel-center">'+center+'<small>'+(m.origin==='archive'?'回看评分':'回看建议')+'</small></div>'+sides[1]+'</div>';
-  const future=m.origin==='archive'&&m.rating===null;
-  const watch=l?'<div class="box detail-grid"><div><h3>观看入口</h3><p>中国大陆 · '+venue[0]+'</p></div><a class="btn accent" href="'+venue[1]+'" target="_blank" rel="noreferrer">前往播放平台 '+icon('external')+'</a></div>':'';
-  const err=s.detailLoads.get(key)==='error';
-  const revealBox=future?'<div class="box"><p>快照记录时尚未开赛。</p></div>':shown&&details?evidence(m,details):'<div class="box detail-grid"><div><h3>赛况与比分</h3><p>'+(err?'本场数据读取失败，可以重试。':'比分与比赛经过已隐藏。')+'</p></div>'+action(s.detailLoads.get(key)==='loading'?'读取中…':err?'重试揭晓':'揭晓本场','reveal',{value:key,symbol:'eye',disabled:s.detailLoads.get(key)==='loading'})+'</div>';
-  show(top+recap+watch+revealBox+'<div class="actions">'+action(saved?'已收藏比赛':'收藏比赛','saveMatch',{value:key,symbol:'bookmark',cls:'btn '+(saved?'accent':'')})+(localFile?'':action('复制比赛链接','share',{value:key,symbol:'external'}))+(shown?action('隐藏赛况','reveal',{value:key,symbol:'lock'}):'')+'</div><p class="note" style="margin-top:12px">'+e(source)+'</p><div id="share-feedback" role="status"></div>');
-}
-async function detailFor(m){
-  if(m.origin==='archive'){
-    if(!archiveResults){
-      archiveRequest??=asset('results').finally(()=>{archiveRequest=null});
-      archiveResults=await archiveRequest;
+  });
+
+  document.addEventListener('input', ev => {
+    if (ev.target.id === 'team-query') {
+      const box = $('search-results');
+      if (box) box.innerHTML = teamSearchList(ev.target.value);
     }
-    return {score90:archiveResults[m.id]||null};
+  });
+
+  document.addEventListener('keydown', ev => {
+    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') {
+      ev.preventDefault();
+      openModal('search');
+      return;
+    }
+    if (dialog.open || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(ev.target.tagName)) return;
+    if (ev.key === 'ArrowLeft') { ev.preventDefault(); stepCurrent(-1); }
+    if (ev.key === 'ArrowRight') { ev.preventDefault(); stepCurrent(1); }
+  });
+
+  window.addEventListener('popstate', () => {
+    state.route = routeFromUrl(state.catalog);
+    closeModal();
+    render();
+  });
+
+  try {
+    state.catalog = await loadCatalog();
+    state.route = routeFromUrl(state.catalog);
+    render();
+    if (state.route.match && state.catalog.byId.has(state.route.match)) {
+      openModal('details', state.route.match);
+    }
+  } catch {
+    $('view').innerHTML = '<div class="state-card">比赛数据加载失败，请刷新页面重试。</div>';
   }
-  const group=[m.day,m.feedMode].join('/');
-  if(!detailRequests.has(group)){
-    const pending=json(feedPath(m.day,m.feedMode,true),AbortSignal.timeout(45000)).then(feed=>{
-      if(feed.day!==m.day||feed.mode!==m.feedMode)throw Error('数据来源已变更');
-      return new Map(feed.matches.map(v=>[String(v.id),v.details]));
-    }).finally(()=>detailRequests.delete(group));detailRequests.set(group,pending);
-  }
-  const data=(await detailRequests.get(group)).get(m.id);if(!data)throw Error('未找到该场详情');return data;
-}
-const detailRequests=new Map();
-async function reveal(key,force=false){
-  const m=findMatch(key);if(!m||m.origin==='archive'&&m.rating===null)return;
-  if(!force&&s.revealed.has(key)){s.revealed.delete(key);render();renderModal();return}
-  if(s.revealed.has(key)||s.detailLoads.get(key)==='loading')return;
-  const version=routeVersion;s.detailLoads.set(key,'loading');if(modal?.key===key)renderModal();
-  try{const data=s.details.get(key)||await detailFor(m);if(version!==routeVersion)return;s.details.set(key,data);s.revealed.add(key);s.detailLoads.delete(key)}
-  catch{if(version!==routeVersion)return;s.detailLoads.set(key,'error');if(!modal)openModal('details',key)}
-  if(version===routeVersion){render();renderModal()}
-}
-function navigateStep(delta){
-  const r=s.route;if(r.view==='night')go({date:dayOffset(r.date,delta)});
-  if(r.view==='round'&&s.catalog.archive.some(m=>m.league===r.league&&m.round===r.round+delta))go({round:r.round+delta});
-}
-async function share(m){
-  const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('view',m.origin==='daily'?'night':'round');url.searchParams.set('match',m.id);
-  if(m.origin==='daily'){url.searchParams.set('date',m.day);if(m.feedMode==='sample')url.searchParams.set('source','sample')}
-  else{url.searchParams.set('league',m.league);url.searchParams.set('round',m.round)}
-  try{await navigator.clipboard.writeText(url.href);if($('share-feedback'))$('share-feedback').textContent='已复制无剧透链接。'}
-  catch{if($('share-feedback'))$('share-feedback').innerHTML='<label>无剧透链接<input class="text-input" readonly value="'+e(url.href)+'"></label>'}
-}
-document.addEventListener('click',async ev=>{
-  const button=ev.target.closest('[data-act]'),row=ev.target.closest('[data-open]');
-  if(!button){if(row)openModal('details',row.dataset.open);return}
-  const {act,val}=button.dataset,r=s.route;
-  switch(act){
-    case 'view':go({view:val});break;
-    case 'league':go({view:['archive','table','stats'].includes(r.view)?r.view:'round',league:val,round:null});break;
-    case 'dailyLeague':go({league:val});break;
-    case 'previous':navigateStep(-1);break;case 'next':navigateStep(1);break;
-    case 'refresh':routeVersion++;await loadDaily();break;
-    case 'sample':go({view:'night',date:snapshotDate,source:'sample',league:'all'});break;
-    case 'dateFocus':$('match-date')?.focus();try{$('match-date')?.showPicker()}catch{}break;
-    case 'clearMin':s.min=0;render();break;
-    case 'search':case 'settings':case 'about':case 'navigation':openModal(act);break;
-    case 'close':closeModal();break;
-    case 'details':case 'team':openModal(act,val);break;
-    case 'reveal':await reveal(val);break;
-    case 'mobileReveal':closeModal();
-    case 'revealAll':await Promise.all(activeMatches().map(m=>reveal(matchKey(m),true)));break;
-    case 'mobileHide':closeModal();
-    case 'hideAll':routeVersion++;s.detailLoads.clear();s.revealed.clear();render();break;
-    case 'star':if(s.favTeams.has(val))s.favTeams.delete(val);else s.favTeams.add(val);writeStore('teams',[...s.favTeams]);render();renderModal();break;
-    case 'saveMatch':{const m=findMatch(val);if(s.favMatches.has(val))s.favMatches.delete(val);else if(m)s.favMatches.set(val,m);writeStore('matches',[...s.favMatches]);render();renderModal();break}
-    case 'share':{const m=findMatch(val);if(m)await share(m);break}
-    case 'round':go({view:'round',league:r.league,round:Number(val)});break;
-    case 'topLeague':s.top.league=val;render();break;case 'period':s.top.period=val;render();break;
-    case 'topMin':s.top.min=Number(val);render();break;case 'resetTop':s.top=freshTop();render();break;
-    case 'showSeason':s.showSeason=true;s.tableError=false;render();try{s.table??=await asset('standings')}catch{s.tableError=true}render();break;
-  }
-});
-document.addEventListener('input',ev=>{
-  const t=ev.target;if(t.id==='team-query')$('search-results').innerHTML=searchResults(t.value);
-  if(t.id==='minimum'){s.min=Number(t.value);const list=document.createElement('div');list.innerHTML=roundView(s);const root=$('view');root.querySelector('output').textContent=s.min;root.querySelector('.tail').textContent=list.querySelector('.tail').textContent;
-    root.querySelector('.match-list,.empty')?.replaceWith(list.querySelector('.match-list,.empty'));renderSides()}
-  if(t.id==='top-query'){s.top.query=t.value;const caret=t.selectionStart;const box=document.createElement('div');box.innerHTML=topView(s);const old=$('view');old.querySelector('.section-title').replaceWith(box.querySelector('.section-title'));old.querySelector('.grid,.empty').replaceWith(box.querySelector('.grid,.empty'));if(caret!==null)t.setSelectionRange(caret,caret)}
-});
-document.addEventListener('change',ev=>{
-  const t=ev.target;if(t.id==='match-date'&&t.value)go({date:t.value});
-  if(t.id==='theme-select'){s.theme=t.value;writeStore('theme',s.theme);theme()}
-});
-document.addEventListener('keydown',ev=>{
-  if((ev.ctrlKey||ev.metaKey)&&ev.key.toLowerCase()==='k'){ev.preventDefault();openModal('search');return}
-  if(dialog.open||ev.altKey||ev.ctrlKey||ev.metaKey||['INPUT','TEXTAREA','SELECT','BUTTON'].includes(ev.target.tagName))return;
-  if(['ArrowLeft','ArrowRight'].includes(ev.key)){ev.preventDefault();navigateStep(ev.key==='ArrowLeft'?-1:1)}
-});
-window.addEventListener('popstate',()=>go({},false));
-try{s.catalog=await loadCatalog();if(s.route.view==='night')await loadDaily();else{render();openLinkedMatch()}}
-catch{$('view').innerHTML=empty('页面资源读取失败。请通过 Rate90 本地服务打开并刷新。')}
 })();

@@ -1,3 +1,5 @@
 .env*
 *.md
 scripts/
+data/collector/
+data/round-tests/

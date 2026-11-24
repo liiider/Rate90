@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs"
+    "test": "node --experimental-sqlite --test",
+    "collect": "node --experimental-sqlite --env-file-if-exists=.env.local scripts/collect.mjs",
+    "collect:watch": "node --experimental-sqlite --env-file-if-exists=.env.local scripts/collect.mjs --watch",
+    "dev": "node --env-file-if-exists=.env.local scripts/dev.mjs",
+    "fetch:round": "node --env-file-if-exists=.env.local scripts/fetch-test-round.mjs"
   },
   "engines": {
     "node": ">=22.9.0"

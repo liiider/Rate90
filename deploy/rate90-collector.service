@@ -1,0 +1,13 @@
+[Unit]
+Description=Rate90 football fixture collector
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Rate90
+ExecStart=/usr/bin/env node --experimental-sqlite --env-file-if-exists=.env.local scripts/collect.mjs --watch
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
