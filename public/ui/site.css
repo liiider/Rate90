@@ -3378,3 +3378,14 @@ dialog[data-view="details"] .dialog-inner {
     animation: none !important;
   }
 }
+
+.preview-round,.preview-picks h2{margin:0;font-size:1.12rem}
+.preview-round,.preview-picks{margin:1rem 0}
+.preview-picks p{margin:.25rem 0 .8rem}
+.preview-picks h2{margin-bottom:.65rem}
+.preview-row{padding:.85rem .3rem;border-bottom:1px solid color-mix(in srgb,currentColor 16%,transparent);display:grid;grid-template-columns:1fr 2fr auto;align-items:center;gap:1rem}
+.preview-meta,.preview-sides,.preview-sides span{display:flex;align-items:center;gap:.45rem;min-width:0}
+.preview-meta,.preview-row time,.preview-sides small{font-size:.82rem;opacity:.72}
+.preview-meta img,.preview-meta svg,.preview-sides img,.preview-sides svg{width:1.5rem;height:1.5rem;object-fit:contain}
+.preview-sides{gap:.75rem;font-weight:650}
+@media(max-width:680px){.preview-row{grid-template-columns:minmax(0,1fr) auto;gap:.4rem}.preview-sides{grid-column:1/-1;grid-row:2}.preview-row time{grid-column:2;grid-row:1}}

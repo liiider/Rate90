@@ -57,7 +57,10 @@
     const round = catalog?.roundsByLeague[league]?.find(r => String(r) === p.get('round')) ??
       (!requested && linkedMatch && !isValidDate(p.get('date')) ? linkedMatch.round : null);
     const date = round == null && isValidDate(p.get('date')) ? p.get('date') : '';
-    return {league, round, date, match:p.get('match') || ''};
+    const roundChoice=p.get('round');
+    const future=roundChoice==='next' || roundChoice==='following' || p.get('view')==='future' ||
+      (date && date>window.Rate90.upcoming.day({kickoff:Date.now()}));
+    return {league,round,date,future:Boolean(future),horizon:roundChoice==='following' || p.get('horizon')==='2'?2:1,match:p.get('match') || ''};
   }
 
   const state = {
@@ -133,6 +136,11 @@
     renderTopBar();
     syncLeagueRail(state.route.league);
     document.title = (leagues[state.route.league]?.short ?? '全部赛事') + ' · Rate90';
+    if (state.route.future && !state.catalog.prematch && !state.previewLoading && !state.previewError) {
+      state.previewLoading=true;
+      window.Rate90.catalog.loadPrematch(state.catalog.prematchFile).then(data=>{state.catalog.prematch=data;})
+        .catch(()=>{state.previewError=true;}).finally(()=>{state.previewLoading=false;if(state.route.future) render();});
+    }
     $('view').innerHTML = roundView(state);
   }
 
@@ -140,10 +148,13 @@
     const p = new URLSearchParams();
     const league = changes.league ?? state.route.league;
     p.set('league',league);
-    const scopeOnly = changes.league != null && changes.date === undefined && changes.round === undefined;
-    const round = scopeOnly ? state.route.round : changes.round;
-    if (state.catalog.roundsByLeague[league].includes(round)) p.set('round',String(round));
+    const scopeOnly = changes.league != null && changes.date === undefined && changes.round === undefined && changes.future === undefined;
     const date = changes.date ?? (scopeOnly ? state.route.date : '');
+    const round = scopeOnly ? state.route.round : changes.round;
+    const future = changes.future ?? (scopeOnly && state.route.future);
+    if (future && !date) p.set('round',(changes.horizon ?? state.route.horizon)===2?'following':'next');
+    else if (future && date) p.set('view','future');
+    else if (state.catalog.roundsByLeague[league].includes(round)) p.set('round',String(round));
     if (date) p.set('date',date);
     history.pushState(null,'',routeUrl(p));
     state.route = routeFromUrl(state.catalog);
@@ -290,7 +301,7 @@
     if (!state.catalog) return;
     const previous = state.route;
     state.route = routeFromUrl(state.catalog);
-    const listChanged = force || ['league', 'round', 'date'].some(key => previous[key] !== state.route[key]);
+    const listChanged = force || ['league', 'round', 'date','future','horizon'].some(key => previous[key] !== state.route[key]);
     if (listChanged) render();
     const selected = state.catalog.byId.get(state.route.match);
     if (selected) openModal('details', selected.id);
@@ -427,6 +438,11 @@
       const next = Number.isFinite(m.rating) ? (m.rating >= 8 ? 3 : 2) : 1;
       if (!cur || next > cur) map.set(m.date, next);
     }
+    const feed=state.catalog.prematch;
+    if (feed) for (const g of [...feed.rounds.flatMap(r=>r.games),...(feed.extra||[])]) {
+      const date=window.Rate90.upcoming.day(g);
+      if ((league==='all' || league===g.league) && !map.has(date)) map.set(date,1);
+    }
     return map;
   }
 
@@ -523,15 +539,18 @@
         break;
       case 'home':
         ev.preventDefault();
-        navigate({league:'all',date:''});
+        navigate({league:'all',date:'',future:false});
         break;
       case 'league':
         navigate({league:val});
         break;
+      case 'retryPreview':
+        state.previewError=false;
+        render();
+        break;
       case 'prevRound':
       case 'nextRound': {
-        const target = state.catalog.roundsByLeague[state.route.league].find(r => String(r) === val);
-        if (target != null) navigate({round:target,focus:'round-picker'});
+        chooseRound(val);
         break;
       }
       case 'toggleCal':
@@ -607,13 +626,19 @@
     }
   });
 
-  document.addEventListener('change', ev => {
-    if (ev.target.id === 'date-picker' && (!ev.target.value || isValidDate(ev.target.value))) {
-      navigate({date:ev.target.value,focus:'date-picker'});
-    } else if (ev.target.id === 'round-picker') {
-      const round = state.catalog.roundsByLeague[state.route.league].find(r => String(r) === ev.target.value);
-      if (round != null || ev.target.value === 'all') navigate({round,focus:'round-picker'});
+  function chooseRound(value) {
+    if (value==='next' || value==='following') {
+      navigate({future:true,horizon:value==='following'?2:1,focus:'round-picker'});
+      return;
     }
+    const round=state.catalog.roundsByLeague[state.route.league].find(r=>String(r)===value);
+    if (round!=null || value==='all') navigate({round,focus:'round-picker'});
+  }
+
+  document.addEventListener('change', ev => {
+    if (ev.target.id==='date-picker' && (!ev.target.value || isValidDate(ev.target.value))) {
+      navigate({date:ev.target.value,focus:'date-picker'});
+    } else if (ev.target.id==='round-picker') chooseRound(ev.target.value);
   });
 
   document.addEventListener('auxclick', ev => {

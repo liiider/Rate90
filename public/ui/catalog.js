@@ -165,7 +165,7 @@
     const defaultMatchDate = matches.filter(m => Number.isFinite(m.rating)).map(m => m.date).sort().at(-1) ?? availableDates.at(-1) ?? '';
     const times = [snapshot.updatedAt, collected.updatedAt].map(t => Date.parse(t)).filter(Number.isFinite);
     const capturedAt = times.length ? new Date(Math.max(...times)).toISOString() : null;
-    return {teams:[...teamById.values()], team, matches, byId, groups, roundsByLeague, availableDates, defaultMatchDate, capturedAt, detailFiles};
+    return {prematchFile:collected.prematchFile,teams:[...teamById.values()], team, matches, byId, groups, roundsByLeague, availableDates, defaultMatchDate, capturedAt, detailFiles};
   }
 
   const detailSetCache = new Map();
@@ -255,6 +255,7 @@
     writeStore,
     loadCatalog,
     loadMatchDetails,
+    loadPrematch:name=>/^prematch-[0-9a-f]{20}$/.test(name) ? asset(name) : Promise.resolve({rounds:[],picks:{}}),
     ratingTier,
     isValidDate,
     cnDate,

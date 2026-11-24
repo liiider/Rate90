@@ -33,7 +33,7 @@ export async function publishCollected(db,base,dir = assetDirectory) {
   const updatedAt = new Date(latest).toISOString();
   const covered = new Set(db.prepare('SELECT day FROM calendar_days GROUP BY day HAVING COUNT(*)=? ORDER BY day')
     .all(LEAGUES.size).map(r => r.day));
-  const index = {revision,updatedAt,coveredDays:[...covered],days:{},fixtures:[]};
+  const index = {revision,updatedAt,...(previous?.prematchFile ? {prematchFile:previous.prematchFile} : {}),coveredDays:[...covered],days:{},fixtures:[]};
   const teams = new Map(base.teams.map(t => [teamKey(t.en),t.id]));
   const byId = new Map(base.fixtures.map(m => [m.id,m]));
   const sampleById = new Map(base.sample.matches.map(m=>[m.id,m]));

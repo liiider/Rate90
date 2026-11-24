@@ -38,6 +38,11 @@ def parse_index(data):
 
 
 def active_files(index):
+    if 'prematchFile' in index:
+        stem = index['prematchFile']
+        if not re.fullmatch(r'prematch-[0-9a-f]{20}', stem):
+            raise ValueError('无效的赛前快照文件名')
+        yield stem + '.js'
     for day, entry in index['days'].items():
         stem = entry['file']
         match = DAY_FILE.fullmatch(stem)
@@ -135,6 +140,9 @@ class Publisher:
                 content = data if name == INDEX else (self.data / name).read_bytes()
                 path = ASSET + name
                 sha = git_blob(content)
+                if name.startswith('prematch-') and (not content.startswith(PREFIX) or not content.endswith(b';\n') or
+                        hashlib.sha256(content[len(PREFIX):-2]).hexdigest()[:20] != name[9:-3]):
+                    raise ValueError('赛前快照校验失败')
                 if existing.get(path) != sha:
                     stored = self.git('hash-object', '-w', '--stdin', data=content).decode().strip()
                     if stored != sha:

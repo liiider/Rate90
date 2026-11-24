@@ -5,6 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
 import {createBsdClient} from '../server/bsd.mjs';
 import {collectSeason, getMeta, openQueue, seedBackfill, tick} from '../server/collector.mjs';
+import {refreshPrematch} from '../server/prematch-worker.mjs';
 import {loadBaseline, publishCollected} from '../server/publish-collected.mjs';
 
 const state = resolve(process.env.RATE90_STATE_DIR || fileURLToPath(new URL('../data/collector/',import.meta.url)));
@@ -29,11 +30,24 @@ async function run() {
       const base = await loadBaseline();
       if (publishOnly) {
         await publishCollected(db,base);
+        const preview=await refreshPrematch(db,base,null);
+        console.log(JSON.stringify({prematch:preview}));
         return {ok:true};
       }
       seedBackfill(db,base.backfill,base.publishedIds);
       const report = season ? await collectSeason(db,client,{progress:console.log}) : await tick(db,client);
       await publishCollected(db,base);
+      // Publish post-match updates even when a preview provider is unavailable.
+      if (!season) {
+        try {
+          const last=Number(getMeta(db,'prematch:last')) || 0;
+          if (!watch || Date.now()-last >= 5*60000) {
+            const blocked=Number(getMeta(db,'bsd:retryAt'))>Date.now();
+            report.prematch=await refreshPrematch(db,base,blocked?null:client);
+            db.prepare('INSERT OR REPLACE INTO meta VALUES (?,?)').run('prematch:last',String(Date.now()));
+          }
+        } catch (error) {report.prematch={errors:[error.message]};}
+      }
       console.log(new Date().toISOString(),JSON.stringify(report));
       const next = db.prepare("SELECT MIN(due) AS due FROM games WHERE due IS NOT NULL AND phase!='backfill'").get().due;
       return {ok:!report.errors.length,next:Math.max(next ?? Infinity,Number(getMeta(db,'bsd:retryAt')) || 0)};

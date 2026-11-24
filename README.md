@@ -48,3 +48,13 @@ Linux 使用 systemd 用户服务时，运行 `journalctl --user -u rate90-publi
 离线重建读取 `data/round-tests/pl11-ll13-sa12-bl10-l111-cl4/` 中的 `manifest.json` 与 `events/`。随项目交接的 `Rate90-20261122-195044.zip` 可以解压到该目录。在线采集从进程环境或本机 `.env.local` 读取凭据，队列存放在 `data/collector/`。
 
 [比赛接口和评分公式](docs/matches-api.md) · [前端入口与数据结构](docs/frontend.md)
+
+## 0.2 赛前选场
+
+轮次下拉框中的「下一轮」「下下轮」展示所选赛事的完整对阵。选择「全部赛事」可同时看各赛事的对应轮次，日期选择器按北京时间查看当天赛程，包含当前轮剩余比赛。首次离线快照中，五大联赛第二个完整轮次使用 OpenFootball 的 2026–27 赛程，未给开球时间的比赛标记为时间待定。常规采集按 BSD 当季赛程替换离线对阵。
+
+采集器保存同赛事近六场双方射门、非点球 xG、分时段机会，以及可获得的积分形势、首回合比分、跨赛事赛程和伤停观察。伤缺名单保留供应商的状态和预计回归日期。SQLite 中保存实际发送的赛前材料、模型名、生成时间和推荐结果。网站按日期或整轮展示首选和次选。
+
+模型为 `gpt-6.2-sol`，使用 OpenAI Responses API。采集服务器的 `.env.local` 读取 `OPENAI_API_KEY` 或 `RATE90_AI_KEY`。如使用兼容网关，将 `RATE90_AI_BASE_URL` 配置到包含版本号的 API 根地址。仅配置 BSD 时，未来赛程照常更新。预览文件通过现有发布器随索引更新。
+
+[离线赛程来源](https://github.com/openfootball/football.json/tree/master/2026-27)

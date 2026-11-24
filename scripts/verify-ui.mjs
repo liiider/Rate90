@@ -26,7 +26,7 @@ async function until(check, message) {
   assert.fail(message);
 }
 
-async function openApp(t, url, stored = {}) {
+async function openApp(t, url, stored = {}, now = null) {
   const loaded = [];
   const errors = [];
   class LocalAssets extends ResourceLoader {
@@ -47,6 +47,7 @@ async function openApp(t, url, stored = {}) {
   const dom = new JSDOM(await readFile(new URL('index.html', publicRoot), 'utf8'), {
     url, runScripts: 'dangerously', resources: new LocalAssets(), virtualConsole: console,
     beforeParse(w) {
+      if (now !== null) w.Date.now = () => now;
       // jsdom provides <details> interaction and localStorage on HTTP origins.
       // It does not implement native dialogs, layout or scrolling.
       w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -279,4 +280,36 @@ test('back and forward reopen the linked match; closing a direct link removes th
   action(shared, 'close').click();
   assert.equal(shared.open, false);
   assert.equal(new URL(direct.window.location.href).searchParams.get('match'), null);
+});
+
+test('one round picker selects upcoming and historical fixtures and survives scope and history changes',async t=>{
+  const now=Date.parse('2026-11-23T09:00:00Z');
+  const {document,window}=await openApp(t,home+'?league=pl',{},now);
+  const picker=()=>document.querySelector('#round-picker');
+  const select=value=>{
+    picker().value=value;
+    picker().dispatchEvent(new window.Event('change',{bubbles:true}));
+  };
+  assert.deepEqual([...picker().options].slice(0,3).map(o=>o.textContent),['全部轮次','下一轮','下下轮']);
+  assert.equal(document.querySelector('.watch-mode,[data-act="future"],[data-act="historyView"]'),null);
+  select('next');
+  await until(()=>document.querySelector('.preview-row'),'Future schedule did not load');
+  assert.equal(document.querySelectorAll('.preview-row').length,10);
+  assert.equal(picker().value,'next');
+  action(document,'nextRound').click();
+  assert.equal(picker().value,'following');
+  assert.match(document.querySelector('.preview-round').textContent,/13/);
+  action(document,'league','all').click();
+  assert.equal(document.querySelectorAll('.preview-round').length,6);
+  assert.equal(document.querySelectorAll('.preview-row').length,66);
+  action(document,'toggleCal').click();
+  action(document,'pickDate','2026-11-25').click();
+  assert.ok(document.querySelectorAll('.preview-row').length>0);
+  assert.ok([...document.querySelectorAll('.preview-row time')].every(t=>t.textContent.startsWith('11月25日')));
+  window.history.back();
+  await until(()=>picker().value==='following','Back did not restore the second future round');
+  select('10');
+  assert.ok(document.querySelector('.round-group[data-round="10"]'));
+  select('all');
+  assert.equal(picker().value,'all');
 });

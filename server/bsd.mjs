@@ -75,7 +75,24 @@ export function createBsdClient(token, fetchImpl = fetch) {
     if (result.id !== id) throw new Error('BSD 场次不一致');
     return result;
   }
-  return {list, event};
+  async function fixtures(params) {
+    const matches = [];
+    for (let page = 1; page <= 100; page++) {
+      const answer = await get('/api/events/', {...params,page});
+      if (!Array.isArray(answer.results)) throw new Error('BSD 赛程格式异常');
+      matches.push(...answer.results);
+      if (!answer.next) return matches;
+      if (!answer.results.length) break;
+    }
+    throw new Error('BSD 赛程未读取完整');
+  }
+  return {list, event,
+    season: league => get('/api/v2/leagues/'+league+'/season/',{}),
+    seasonFixtures: (league,season) => fixtures({league,season}),
+    standings: (league,season) => get('/api/v2/leagues/'+league+'/standings/',{season_id:season}),
+    teamFixtures: (team,from,to) => fixtures({team,date_from:from,date_to:to}),
+    legInfo: id => get('/api/v2/events/'+id+'/',{})
+  };
 }
 
 export async function loadDay(day, token, fetchImpl = fetch) {

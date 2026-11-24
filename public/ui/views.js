@@ -3,14 +3,15 @@
   const {leagues, roundName, dateSpan, sortMatches, pickHeroIds, escapeHtml: e} = window.Rate90.catalog;
   const {matchCard, leagueIcon, icon} = window.Rate90.components;
 
-  function roundView({catalog, route, watched}) {
-    const {league, round, date} = route;
+  function roundView({catalog, route, watched, previewError}) {
+    const {league, round, date, future, horizon} = route;
     const all = league === 'all';
     const scope = all ? catalog.matches : catalog.matches.filter(m => m.league === league);
     // On a rest day, use the most recent matchday in the selected scope.
     const day = date && scope.reduce((latest,m) => m.date <= date && m.date > latest ? m.date : latest,'');
     const sections = [];
     for (const [id, rounds] of catalog.groups) {
+      if (future) break;
       if (!all && id !== league) continue;
       for (const [value, games] of rounds) {
         if (round != null && value !== round) continue;
@@ -26,13 +27,13 @@
     const sharedRound = sections[0]?.value;
     const activeRound = round ?? (date && sections.every(section => section.value === sharedRound) ? sharedRound : null);
     const roundIdx = activeRound != null ? rounds.indexOf(activeRound) : -1;
-    const prevRound = roundIdx > 0 ? rounds[roundIdx - 1] : null;
-    const nextRound = roundIdx >= 0 && roundIdx < rounds.length - 1 ? rounds[roundIdx + 1] : null;
+    const prevRound = future && !date && horizon === 2 ? 'next' : roundIdx > 0 ? rounds[roundIdx - 1] : null;
+    const nextRound = future && !date && horizon === 1 ? 'following' : roundIdx >= 0 && roundIdx < rounds.length - 1 ? rounds[roundIdx + 1] : null;
 
     const options = rounds.map(value =>
       '<option value="' + e(value) + '"' + (value === round ? ' selected' : '') + '>' + e(roundName(league,value)) + '</option>').join('');
     const dateLabel = date ? date.replaceAll('-', '/') : '选择日期';
-    const currentRoundLabel = sections.length === 1
+    const currentRoundLabel = future ? '按日期' : sections.length === 1
       ? roundName(sections[0].id, sections[0].value)
       : (activeRound != null && !all ? roundName(league, activeRound) : '当期各轮');
     const merged = !all && sections.length === 1;
@@ -50,7 +51,9 @@
           '<button type="button" class="round-nav-btn" data-act="prevRound"' + (prevRound != null ? ' data-val="' + e(prevRound) + '"' : ' disabled') + ' aria-label="前一轮" title="前一轮">' + icon('left') + '</button>' +
           '<select class="date-input" id="round-picker" aria-label="选择轮次">' +
           (date ? '<option value="" hidden disabled selected>' + e(currentRoundLabel) + '</option>' : '') +
-          '<option value="all"' + (!date && round == null ? ' selected' : '') + '>全部轮次</option>' + options + '</select>' +
+          '<option value="all"' + (!future && !date && round == null ? ' selected' : '') + '>全部轮次</option>' +
+          '<option value="next"' + (future && !date && horizon===1 ? ' selected' : '') + '>下一轮</option>' +
+          '<option value="following"' + (future && !date && horizon===2 ? ' selected' : '') + '>下下轮</option>' + options + '</select>' +
           '<button type="button" class="round-nav-btn" data-act="nextRound"' + (nextRound != null ? ' data-val="' + e(nextRound) + '"' : ' disabled') + ' aria-label="后一轮" title="后一轮">' + icon('right') + '</button>' +
         '</span></div>' +
         '<div class="round-date"><label class="sr" for="date-picker">日期跳转</label>' +
@@ -63,6 +66,12 @@
           '</div>' +
         '</div>' +
       '</div></div>';
+    if (future) {
+      if (!catalog.prematch) return dock + (previewError ?
+        '<p class="state-card">赛程读取失败。 <button class="text-btn" data-act="retryPreview">重新读取</button></p>' :
+        '<p class="state-card">正在读取未来赛程…</p>');
+      return dock + window.Rate90.upcoming.view(catalog,window.Rate90.upcoming.sections(catalog.prematch,route));
+    }
     if (!sections.length) return dock + '<p class="state-card">暂无对应赛程。</p>';
     return dock + sections.map(({id,value,games}) => {
       const sorted = sortMatches(games), heroes = pickHeroIds(sorted);

@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -73,6 +74,24 @@ class PublicationTest(unittest.TestCase):
         self.assertEqual(self.head(), retried)
         self.publisher.online = lambda _: self.fail('unchanged snapshot contacted production')
         self.assertTrue(self.publisher.deploy())
+
+    def test_prematch_only_update(self):
+        self.publisher.deploy()
+        head = self.head()
+        index = pub.parse_index((self.data / pub.INDEX).read_bytes())
+        payload = b'{"rounds":[],"picks":{}}'
+        name = 'prematch-' + hashlib.sha256(payload).hexdigest()[:20]
+        index['prematchFile'] = name
+        (self.data / pub.INDEX).write_bytes(pub.PREFIX + json.dumps(index).encode() + b';\n')
+        asset = self.data / (name + '.js')
+        asset.write_bytes(pub.PREFIX + b'{};\n')
+        with self.assertRaises(ValueError):
+            self.publisher.deploy()
+        self.assertEqual(self.head(), head)
+        asset.write_bytes(pub.PREFIX + payload + b';\n')
+        self.publisher.deploy()
+        self.assertEqual(cmd('--git-dir', str(self.remote), 'show', 'main:' + pub.ASSET + asset.name),
+                         asset.read_text().strip())
 
     def test_missing_data_and_stale_seed_do_not_replace_main(self):
         self.write(3)
