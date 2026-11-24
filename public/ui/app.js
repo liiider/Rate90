@@ -2,90 +2,83 @@
   'use strict';
 
   const {
-    defaultMatchDate,
     leagues,
     escapeHtml: e,
     readStore,
     writeStore,
     loadCatalog,
     loadMatchDetails,
-    loadViewingProfile,
     ratingTier,
-    dayOffset,
     isValidDate,
     cnDate,
-    roundName,
-    venueFor
+    roundName
   } = window.Rate90.catalog;
 
   const {
     icon,
+    morphTo,
+    defaultCrestSvg,
+    leagueIcon,
     leagueRail,
     crest,
-    viewingPreview,
+    detailHeroTags,
+    watchLink,
+    watchLabel,
+    canWatch,
     miniMatchRow,
-    dialogHead,
-    revealedEvidence
+    dialogHead
   } = window.Rate90.components;
 
-  const { dateView, roundView, allView } = window.Rate90.views;
+  const { roundView } = window.Rate90.views;
 
   const $ = id => document.getElementById(id);
   const dialog = $('overlay');
   const localFile = location.protocol === 'file:';
 
-  const routeParams = () => new URLSearchParams(localFile ? location.hash.slice(1) : location.search);
+  const routeParams = () => new URLSearchParams(localFile
+    ? location.hash.slice(1) || location.search
+    : location.search || location.hash.slice(1));
+
+  function routeUrl(params) {
+    const url = new URL(location.href);
+    url.hash = '';
+    url.search = '';
+    if (localFile) url.hash = params.toString();
+    else url.search = params.toString();
+    return url.href;
+  }
 
   function routeFromUrl(catalog = null) {
     const p = routeParams();
-    const rawView = p.get('view');
-    const view = ['date', 'round', 'all'].includes(rawView) ? rawView : 'date';
-
-    let league = p.get('league');
-    if (view === 'round') {
-      if (!Object.hasOwn(leagues, league)) league = 'pl';
-    } else if (!Object.hasOwn(leagues, league)) {
-      league = 'all';
-    }
-
-    const roundLeague = Object.hasOwn(leagues, league) ? league : 'pl';
-    const fallbackRound = catalog ? catalog.latestRatedRound[roundLeague] : leagues[roundLeague].round;
-    const requested = Number(p.get('round'));
-    const validRound = catalog
-      ? catalog.matches.some(m => m.league === roundLeague && m.round === requested)
-      : Math.abs(requested - fallbackRound) <= 1;
-
-    const rawDate = p.get('date');
-    const date = isValidDate(rawDate) ? rawDate : defaultMatchDate;
-
-    return {
-      view,
-      league,
-      round: validRound ? requested : fallbackRound,
-      date,
-      match: p.get('match') || ''
-    };
+    const linkedMatch = catalog?.byId.get(p.get('match'));
+    const requested = p.get('league');
+    const league = Object.hasOwn(leagues,requested) || requested === 'all' ? requested :
+      (linkedMatch?.league ?? 'all');
+    const round = catalog?.roundsByLeague[league]?.find(r => String(r) === p.get('round')) ??
+      (!requested && linkedMatch && !isValidDate(p.get('date')) ? linkedMatch.round : null);
+    const date = round == null && isValidDate(p.get('date')) ? p.get('date') : '';
+    return {league, round, date, match:p.get('match') || ''};
   }
 
   const state = {
     catalog: null,
     route: routeFromUrl(),
-    bookmarks: new Set(readStore('bookmarks', [])),
-    theme: readStore('theme', 'light'),
-    revealed: new Set(),
-    previews: new Map(),
+    watched: new Set(),
+    peeked: new Set(),
+    theme: readStore('theme', 'dark'),
     details: new Map(),
-    loadingDetail: new Set(),
-    detailError: new Set()
+    pendingDetails: new Set()
   };
 
   let modal = null;
+  let detailTab = { activeTab: 'lineups', pendingTab: '' };
+  const detailSession = Math.random().toString(36).slice(2);
 
   function applyTheme() {
     const isDark = state.theme === 'dark';
     document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', isDark ? '#0B0D0C' : '#F5F3ED');
+    if (meta) meta.setAttribute('content', isDark ? '#050506' : '#F4F6FA');
   }
 
   applyTheme();
@@ -98,20 +91,26 @@
   let lastTopBarSig = '';
 
   function renderTopBar() {
-    const count = state.bookmarks.size;
+    const count = watchedMatches().length;
     const isDark = state.theme === 'dark';
     const sig = count + ':' + isDark;
     if (sig === lastTopBarSig) return;
+    const bar = $('top-actions');
+    const firstMount = !lastTopBarSig;
+    if (firstMount) {
+      bar.innerHTML =
+        '<button type="button" class="icon-btn" data-act="watched" title="看过" aria-label="看过">' +
+          icon('history') + '<span class="icon-badge" hidden></span></button>' +
+        '<button type="button" class="icon-btn" data-act="theme" aria-label="切换明暗主题">' +
+          icon(isDark ? 'sun' : 'moon') + '</button>';
+    }
     lastTopBarSig = sig;
-    $('top-actions').innerHTML =
-      '<button type="button" class="icon-btn" data-act="search" title="搜索球队 (Ctrl K)" aria-label="搜索球队">' + icon('search') + '</button>' +
-      '<button type="button" class="icon-btn" data-act="bookmarks" title="我的收藏" aria-label="我的收藏">' +
-        icon(count ? 'bookmarkFilled' : 'bookmark') +
-        (count ? '<span class="icon-badge">' + count + '</span>' : '') +
-      '</button>' +
-      '<button type="button" class="icon-btn" data-act="theme" title="' + (isDark ? '切换浅色画报主题' : '切换深色炭黑主题') + '" aria-label="切换明暗主题">' +
-        icon(isDark ? 'sun' : 'moon') +
-      '</button>';
+    const badge = bar.querySelector('.icon-badge');
+    badge.hidden = count === 0;
+    badge.textContent = count || '';
+    const themeButton = bar.querySelector('[data-act="theme"]');
+    themeButton.title = isDark ? '切换浅色主题' : '切换深色主题';
+    if (!firstMount) morphTo(themeButton, isDark ? 'sun' : 'moon', 'smooth');
   }
 
   function syncLeagueRail(league) {
@@ -132,154 +131,197 @@
   function render() {
     if (!state.catalog) return;
     renderTopBar();
-    const { view, league, date } = state.route;
-    syncLeagueRail(league);
-
-    const viewTitle = view === 'round'
-      ? leagues[league === 'all' ? 'pl' : league].short + '轮次'
-      : view === 'all'
-        ? (league === 'all' ? '全部比赛' : leagues[league].short)
-        : cnDate(date);
-    document.title = viewTitle + ' · Rate90';
-
-    const views = { date: dateView, round: roundView, all: allView };
-    $('view').innerHTML = views[view](state);
+    syncLeagueRail(state.route.league);
+    document.title = (leagues[state.route.league]?.short ?? '全部赛事') + ' · Rate90';
+    $('view').innerHTML = roundView(state);
   }
 
-  function navigate(changes, push = true) {
-    const p = routeParams();
-    const nextView = changes.view || state.route.view;
-    p.set('view', nextView);
-    p.delete('match');
-
-    let nextLeague = changes.league !== undefined ? changes.league : state.route.league;
-    if (nextView === 'round' && nextLeague === 'all') nextLeague = 'pl';
-    if (nextLeague === 'all' || !nextLeague) p.delete('league');
-    else p.set('league', nextLeague);
-
-    if (nextView === 'date') {
-      const nextDate = changes.date || state.route.date || defaultMatchDate;
-      p.set('date', nextDate);
-      p.delete('round');
-    } else if (nextView === 'round') {
-      p.delete('date');
-      if (changes.round != null) p.set('round', String(changes.round));
-      else if (changes.league && changes.league !== state.route.league) p.delete('round');
-    } else {
-      p.delete('date');
-      p.delete('round');
-    }
-
-    if (push) {
-      const qs = p.toString();
-      history.pushState(null, '', qs ? (localFile ? '#' : '?') + qs : location.pathname);
-    }
-
-    const prevView = state.route.view;
+  function navigate(changes) {
+    const p = new URLSearchParams();
+    const league = changes.league ?? state.route.league;
+    p.set('league',league);
+    const scopeOnly = changes.league != null && changes.date === undefined && changes.round === undefined;
+    const round = scopeOnly ? state.route.round : changes.round;
+    if (state.catalog.roundsByLeague[league].includes(round)) p.set('round',String(round));
+    const date = changes.date ?? (scopeOnly ? state.route.date : '');
+    if (date) p.set('date',date);
+    history.pushState(null,'',routeUrl(p));
     state.route = routeFromUrl(state.catalog);
-    closeModal();
+    dismissModal();
     render();
-    if (prevView !== state.route.view) window.scrollTo(0, 0);
+    if (changes.focus) $(changes.focus)?.focus();
   }
 
   function showDialog(html, labelledBy = 'dialog-title') {
     $('dialog-body').innerHTML = html;
     dialog.setAttribute('aria-labelledby', labelledBy);
+    document.documentElement.classList.add('modal-open');
     if (!dialog.open) dialog.showModal();
   }
 
-  function closeModal() {
+  function dismissModal() {
     modal = null;
+    document.documentElement.classList.remove('modal-open');
     if (dialog.open) dialog.close();
   }
 
-  function openModal(type, id = '') {
-    modal = { type, id };
-    renderModal();
-    if (type === 'search') $('team-query')?.focus();
-    if (type === 'details') ensurePreview(id);
+  function removeMatchFromUrl() {
+    const p = routeParams();
+    p.delete('match');
+    p.set('league',state.route.league);
+    if (state.route.round != null) p.set('round',String(state.route.round));
+    history.replaceState(null,'',routeUrl(p));
+    state.route = routeFromUrl(state.catalog);
   }
 
-  async function ensurePreview(matchId) {
-    const m = state.catalog?.byId.get(matchId);
-    if (!m || !m.hasPreview || state.previews.has(m.id)) return;
-    try {
-      const viewing = await loadViewingProfile(m.id);
-      state.previews.set(m.id, viewing);
-      if (modal?.type === 'details' && modal.id === matchId) renderModal();
-    } catch {}
-  }
-
-  function teamSearchList(query) {
-    const q = query.trim().toLowerCase();
-    const list = (q
-      ? state.catalog.teams.filter(t => (t.zh + ' ' + t.en).toLowerCase().includes(q))
-      : state.catalog.teams.slice(0, 16)
-    ).slice(0, 40);
-
-    if (!list.length) {
-      return '<div class="state-card">没有找到匹配的球队。</div>';
+  function closeModal() {
+    dismissModal();
+    if (!state.route.match) return;
+    if (history.state?.rate90Detail === detailSession) {
+      state.route = { ...state.route, match: '' };
+      history.back();
+    } else {
+      removeMatchFromUrl();
     }
-    return list.map(t =>
-      '<button type="button" class="team-option" data-act="team" data-val="' + e(t.id) + '">' +
-        crest(t, 'sm') + '<b>' + e(t.zh) + '</b><small>' + e(t.en) + '</small>' +
-      '</button>'
-    ).join('');
+  }
+
+  function openDetails(id) {
+    const m = state.catalog.byId.get(id);
+    if (!m) return;
+    const p = routeParams();
+    p.set('league',state.route.league);
+    if (state.route.round != null) p.set('round',String(state.route.round));
+    p.set('match', m.id);
+    history.pushState({ rate90Detail: detailSession }, '', routeUrl(p));
+    state.route = routeFromUrl(state.catalog);
+    openModal('details', m.id);
+  }
+
+  function openModal(type, id = '') {
+    if (type !== 'details' && modal?.type === 'details' && state.route.match) {
+      removeMatchFromUrl();
+    }
+    modal = { type, id };
+    if (type === 'details') detailTab = { activeTab: 'lineups', pendingTab: '' };
+    dialog.dataset.view = type;
+    renderModal();
+    dialog.scrollTop = 0;
+    const scroller = dialog.querySelector('.dialog-scroll');
+    if (scroller) scroller.scrollTop = 0;
+    if (!dialog.contains(document.activeElement)) dialog.querySelector('[data-act="close"]')?.focus();
+    if (type === 'details') loadFacts(id);
+  }
+
+  function refreshFacts(id, focusSelection = false) {
+    const m = state.catalog.byId.get(id);
+    const box = $('match-facts');
+    if (!m || !box) return;
+    box.innerHTML = window.Rate90.renderMatchFacts(m, state.details.get(id), detailTab);
+    if (focusSelection) {
+      const selector = detailTab.pendingTab ? '[data-act="cancelPeek"]' : '[role="tab"][aria-selected="true"]';
+      box.querySelector(selector)?.focus();
+    }
+  }
+
+  async function loadFacts(id) {
+    const m = state.catalog.byId.get(id);
+    if (!m?.hasDetails || state.details.has(id) || state.pendingDetails.has(id)) return;
+    state.pendingDetails.add(id);
+    try {
+      state.details.set(id, await loadMatchDetails(id));
+      if (modal?.type === 'details' && modal.id === id) {
+        refreshFacts(id);
+      }
+    } catch {
+      if (modal?.type === 'details' && modal.id === id) {
+        $('match-facts').innerHTML = '<p class="match-note">详细资料读取失败。 ' +
+          '<button type="button" class="text-btn" data-act="retryDetails" data-val="' + e(id) + '">重新读取</button></p>';
+      }
+    } finally {
+      state.pendingDetails.delete(id);
+    }
+  }
+
+  function watchedMatches() {
+    return [...state.watched].reverse().map(id => state.catalog?.byId.get(id)).filter(m => m && canWatch(m));
+  }
+
+  function readWatched(fallback) {
+    const data = readStore('watched', fallback);
+    const ids = Array.isArray(data) ? data : [];
+    return new Set(ids.filter(id => typeof id === 'string' && id).map(id => state.catalog.byId.get(id)?.id || id));
+  }
+
+  function setWatched(id, value) {
+    const m = state.catalog.byId.get(id);
+    if (!m || (value && !canWatch(m))) return;
+    state.watched = readWatched([...state.watched]);
+    if (value) state.watched.add(m.id);
+    else state.watched.delete(m.id);
+    writeStore('watched', [...state.watched]);
+    syncWatched();
+    announce(value ? '已加入看过' : '已从看过中移除');
+  }
+
+  function syncWatched() {
+    renderTopBar();
+    for (const link of document.querySelectorAll('a[data-act="watch"]')) {
+      const m = state.catalog.byId.get(link.dataset.val);
+      if (!m) continue;
+      const watched = state.watched.has(m.id);
+      if (link.classList.contains('is-watched') === watched) continue;
+      link.classList.toggle('is-watched', watched);
+      link.setAttribute('aria-label', watchLabel(m, watched));
+      morphTo(link.querySelector('.watch-icon'), watched ? 'check' : 'external', 'snappy');
+    }
+    if (modal?.type === 'details') {
+      const undo = $('undo-watch');
+      const hadFocus = document.activeElement === undo;
+      undo.hidden = !state.watched.has(modal.id);
+      if (undo.hidden && hadFocus) dialog.querySelector('[data-act="watch"]')?.focus();
+    } else if (modal?.type === 'watched') {
+      renderModal();
+      const next = dialog.querySelector('[data-act="removeWatched"]') || dialog.querySelector('[data-act="close"]');
+      next?.focus();
+    }
+  }
+
+  function restoreRoute(force = false) {
+    if (!state.catalog) return;
+    const previous = state.route;
+    state.route = routeFromUrl(state.catalog);
+    const listChanged = force || ['league', 'round', 'date'].some(key => previous[key] !== state.route[key]);
+    if (listChanged) render();
+    const selected = state.catalog.byId.get(state.route.match);
+    if (selected) openModal('details', selected.id);
+    else if (listChanged || modal?.type === 'details') dismissModal();
   }
 
   function renderModal() {
     if (!modal) return;
     const { type, id } = modal;
 
-    if (type === 'search') {
+    if (type === 'watched') {
+      const seen = watchedMatches();
+      const rows = seen.map(m => '<div class="watch-history-row">' + miniMatchRow(m) +
+        '<button type="button" class="icon-btn" data-act="removeWatched" data-val="' + e(m.id) + '" title="撤销看过" aria-label="撤销看过 ' +
+        e(m.home.zh + ' 对 ' + m.away.zh) + '">' + icon('undo') + '</button></div>');
       showDialog(
-        dialogHead('搜索球队', '欧冠与五大联赛') +
-        '<input class="search-input" id="team-query" type="search" placeholder="输入中文或英文队名，如 曼联、Real Madrid" aria-label="搜索球队">' +
-        '<div class="modal-list" id="search-results">' + teamSearchList('') + '</div>'
-      );
-      return;
-    }
-
-    if (type === 'team') {
-      const t = state.catalog.team(id);
-      const matches = state.catalog.matches
-        .filter(m => m.home.id === id || m.away.id === id)
-        .sort((a, b) => b.date.localeCompare(a.date));
-
-      showDialog(
-        dialogHead(t.zh, t.en) +
-        '<div class="modal-list">' +
-          (matches.length ? matches.map(miniMatchRow).join('') : '<div class="state-card">暂无已收录比赛。</div>') +
-        '</div>' +
-        '<div class="modal-actions">' +
-          '<button type="button" class="text-btn" data-act="search">← 返回搜索</button>' +
-        '</div>'
-      );
-      return;
-    }
-
-    if (type === 'bookmarks') {
-      const saved = [...state.bookmarks].map(mid => state.catalog.byId.get(mid)).filter(Boolean);
-      showDialog(
-        dialogHead('我的收藏', saved.length + ' 场待看') +
-        '<div class="modal-list">' +
-          (saved.length ? saved.map(miniMatchRow).join('') : '<div class="state-card">还没有收藏比赛。打开任意场次详情即可加入待看。</div>') +
-        '</div>'
+        dialogHead('看过', seen.length + ' 场') + '<div class="modal-list">' +
+        (rows.length ? rows.join('') : '<div class="state-card">暂无观看记录</div>') + '</div>'
       );
       return;
     }
 
     if (type === 'about') {
-      showDialog(
-        dialogHead('关于本站') +
-        '<div class="about-copy">' +
-          '<p><strong>先看评分，再决定是否回看。</strong>用 0–10 评分呈现欧冠与欧洲五大联赛的比赛观赏价值，默认隐藏全部比分，让你在不被剧透的前提下挑选值得花 90 分钟的场次。</p>' +
-          '<p><strong>静态评分快照。</strong>当前收录 2026/27 赛季共 198 场赛程（含 95 场已评比赛与 103 场未开赛赛程），比分仅在你主动点击揭晓后按需读取。部分重点场次揭晓后还附带每 15 分钟射门节奏与 xG 参考。</p>' +
-        '</div>' +
-        '<div class="modal-actions">' +
-          '<a class="btn" href="./world-cup-2022.html">2022 世界杯历史样本 ' + icon('external') + '</a>' +
-        '</div>'
-      );
+      showDialog(dialogHead('关于 Rate90') +
+        '<div class="about-copy"><p>Rate90 是一份无剧透的足球回看指南，收录欧冠和五大联赛。选一轮比赛，看评分和推荐理由，再决定今晚看哪场。</p></div>');
+      return;
+    }
+
+    if (type === 'method') {
+      showDialog(dialogHead('评分方法') +
+        '<div class="about-copy"><p>Rate90 不按最终比分或球队名气打分，而是依据全场过程数据从六个量化维度加权计分，满分 10 分。</p></div>');
       return;
     }
 
@@ -287,119 +329,86 @@
       const m = state.catalog.byId.get(id);
       if (!m) { closeModal(); return; }
 
-      const l = leagues[m.league];
-      const tier = ratingTier(m.rating);
-      const upcoming = m.rating === null;
-      const saved = state.bookmarks.has(m.id);
-      const shown = state.revealed.has(m.id);
-      const loading = state.loadingDetail.has(m.id);
-      const hasErr = state.detailError.has(m.id);
-      const details = state.details.get(m.id);
-      const [venueName, venueUrl] = venueFor(m.league);
+      const meta = [leagues[m.league].short, roundName(m.league, m.round), cnDate(m.date), m.time].filter(Boolean);
+      const rated = Number.isFinite(m.rating);
+      const watched = state.watched.has(m.id);
+      const heroTags = detailHeroTags(m);
+      const facts = m.hasDetails && !state.details.has(m.id)
+        ? '<p class="match-note" role="status">正在读取本场资料…</p>'
+        : window.Rate90.renderMatchFacts(m, state.details.get(m.id), detailTab);
 
-      const metaParts = [l.short, roundName(m.league, m.round), cnDate(m.date)];
-      if (m.time) metaParts.push(m.time);
-
-      const centerPlaque = upcoming
-        ? '<div class="detail-plaque upcoming"><div class="plaque-num">—</div></div>'
-        : '<div class="detail-plaque ' + tier.cls + '"><div class="plaque-num">' + m.rating.toFixed(1) + '<small>/10</small></div></div>';
-
-      let revealArea = '';
-      if (upcoming) {
-        revealArea = '<div class="reveal-muted">本场比赛尚未开赛</div>';
-      } else if (shown && details) {
-        revealArea = '<div class="reveal-opened">' + revealedEvidence(details) + '</div>';
-      } else {
-        revealArea = '<button type="button" class="reveal-shield" data-act="reveal" data-val="' + e(m.id) + '"' + (loading ? ' disabled' : '') + '>' +
-          '<span class="shield-icon">' + icon('eye') + '</span>' +
-          '<span class="shield-title">' + (loading ? '正在读取赛果…' : hasErr ? '读取失败，点击重试' : '点击揭晓比分') + '</span>' +
-          '<span class="shield-sub">比分默认隐藏 · 揭晓后可随时重新收起</span>' +
-        '</button>';
-      }
-
-      const previewHtml = viewingPreview(state.previews.get(m.id), m.styles);
-
+      const tierCls = ratingTier(m.rating).cls;
       showDialog(
-        '<div class="detail-bar">' +
-          '<span class="detail-meta" id="dialog-title">' + e(metaParts.join(' · ')) + '</span>' +
-          '<button type="button" class="icon-btn" data-act="close" aria-label="关闭" title="关闭">' + icon('close') + '</button>' +
+        '<div class="dialog-scroll">' +
+          '<div class="detail-hero detail-hero-' + tierCls + (heroTags ? ' has-hero-tags' : '') + '">' +
+            '<div class="detail-eyebrow">' + leagueIcon(m.league, 'detail-ic') + '<span class="detail-meta">' + e(meta.join(' · ')) + '</span></div>' +
+            '<h2 id="dialog-title" class="sr">' + e(m.home.zh + ' 对 ' + m.away.zh) + '</h2>' +
+            '<div class="duel-stage">' +
+              '<div class="duel-club">' + crest(m.home, 'lg') + '<b>' + e(m.home.zh) + '</b></div>' +
+              '<div class="detail-plaque ' + tierCls + '" aria-label="' + (rated ? '评分 ' + m.rating.toFixed(1) : '暂无评分') + '">' +
+                '<div class="plaque-num">' + (rated ? m.rating.toFixed(1) + '<small>/10</small>' : '—') + '</div></div>' +
+              '<div class="duel-club">' + crest(m.away, 'lg') + '<b>' + e(m.away.zh) + '</b></div>' +
+            '</div>' +
+            heroTags +
+          '</div>' +
+          '<div class="detail-content">' +
+            '<div id="match-facts">' + facts + '</div>' +
+          '</div>' +
         '</div>' +
-        '<div class="duel-stage">' +
-          '<div class="duel-club">' + crest(m.home, 'lg') + '<b>' + e(m.home.zh) + '</b></div>' +
-          centerPlaque +
-          '<div class="duel-club">' + crest(m.away, 'lg') + '<b>' + e(m.away.zh) + '</b></div>' +
-        '</div>' +
-        previewHtml +
-        revealArea +
-        '<div class="modal-actions">' +
-          '<a class="btn primary" href="' + venueUrl + '" target="_blank" rel="noreferrer">前往' + e(venueName) + ' ' + icon('external') + '</a>' +
-          '<button type="button" class="btn' + (saved ? ' active-soft' : '') + '" data-act="toggleBookmark" data-val="' + e(m.id) + '">' +
-            icon(saved ? 'bookmarkFilled' : 'bookmark') + (saved ? '已收藏' : '收藏') +
-          '</button>' +
-          (localFile ? '' : '<button type="button" class="btn push" data-act="copyLink" data-val="' + e(m.id) + '">' + icon('link') + '复制链接</button>') +
-        '</div>' +
-        '<div id="share-feedback" class="feedback-line" role="status"></div>'
+        '<div class="detail-footer">' +
+          '<button type="button" id="undo-watch" class="btn detail-undo" data-act="removeWatched" data-val="' + e(m.id) + '"' +
+            (watched ? '' : ' hidden') + '>' + icon('undo') + '撤销看过</button>' +
+          '<div class="detail-footer-actions">' +
+            watchLink(m, watched) +
+            '<button type="button" class="btn detail-confirm" data-act="close" autofocus>确定</button>' +
+          '</div>' +
+        '</div>'
       );
     }
   }
 
-  async function revealMatch(matchId) {
-    const m = state.catalog.byId.get(matchId);
-    if (!m || m.rating === null || state.loadingDetail.has(matchId)) return;
-    if (state.details.has(matchId)) {
-      state.revealed.add(matchId);
-      renderModal();
-      return;
-    }
+  let copyTimer = null;
 
-    state.loadingDetail.add(matchId);
-    state.detailError.delete(matchId);
-    renderModal();
-
-    try {
-      const data = await loadMatchDetails(matchId);
-      state.details.set(matchId, data);
-      state.revealed.add(matchId);
-    } catch {
-      state.detailError.add(matchId);
-    } finally {
-      state.loadingDetail.delete(matchId);
-      renderModal();
-    }
-  }
-
-  async function copyMatchLink(matchId) {
+  async function copyMatchLink(matchId, button) {
     const m = state.catalog.byId.get(matchId);
     if (!m) return;
     const url = new URL(location.href);
     url.search = '';
     url.hash = '';
-    url.searchParams.set('view', 'date');
-    url.searchParams.set('date', m.date);
+    url.searchParams.set('league', m.league);
+    url.searchParams.set('round', m.round);
     url.searchParams.set('match', m.id);
     try {
       await navigator.clipboard.writeText(url.href);
       if ($('share-feedback')) $('share-feedback').textContent = '已复制无剧透比赛链接。';
+      if (button) {
+        morphTo(button, 'check', 'snappy');
+        clearTimeout(copyTimer);
+        copyTimer = setTimeout(() => morphTo(button, 'link', 'smooth'), 1800);
+      }
     } catch {
       if ($('share-feedback')) $('share-feedback').textContent = url.href;
     }
   }
 
-  function stepCurrent(delta) {
-    const { view, league, round, date } = state.route;
-    if (view === 'date') {
-      navigate({ view: 'date', date: dayOffset(date, delta) });
+  dialog.addEventListener('toggle', ev => {
+    const target = ev.target;
+    if (target?.matches?.('details.match-disclosure')) {
+      morphTo(target.querySelector(':scope > summary'), target.open ? 'down' : 'right', 'snappy');
+    }
+  }, true);
+
+  dialog.addEventListener('cancel', ev => { ev.preventDefault(); closeModal(); });
+  dialog.addEventListener('wheel', ev => {
+    const scroller = ev.target.closest?.('.detail-panel, .modal-list, .dialog-inner');
+    if (!scroller || scroller.scrollHeight <= scroller.clientHeight + 1) {
+      ev.preventDefault();
       return;
     }
-    if (view === 'round') {
-      const target = round + delta;
-      if (state.catalog.matches.some(m => m.league === league && m.round === target)) {
-        navigate({ view: 'round', league, round: target });
-      }
-    }
-  }
-
-  dialog.addEventListener('cancel', () => { modal = null; });
+    const atTop = scroller.scrollTop <= 0 && ev.deltaY < 0;
+    const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1 && ev.deltaY > 0;
+    if (atTop || atBottom) ev.preventDefault();
+  }, { passive: false });
   dialog.addEventListener('click', ev => {
     if (ev.target === dialog) {
       const r = dialog.getBoundingClientRect();
@@ -409,78 +418,185 @@
     }
   });
 
+  function matchDayTiers(league) {
+    const map = new Map();
+    const list = league === 'all' ? state.catalog.matches : state.catalog.matches.filter(m => m.league === league);
+    for (const m of list) {
+      if (!m.date) continue;
+      const cur = map.get(m.date);
+      const next = Number.isFinite(m.rating) ? (m.rating >= 8 ? 3 : 2) : 1;
+      if (!cur || next > cur) map.set(m.date, next);
+    }
+    return map;
+  }
+
+  function closeCalendar() {
+    const pop = $('cal-popover');
+    if (pop) pop.hidden = true;
+    const trigger = document.querySelector('[data-act="toggleCal"]');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  function renderCalendar(year, month) {
+    const pop = $('cal-popover');
+    if (!pop || !state.catalog) return;
+    const tiers = matchDayTiers(state.route.league);
+    const selected = state.route.date;
+    const first = new Date(Date.UTC(year, month, 1));
+    const startPad = (first.getUTCDay() + 6) % 7;
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const prev = new Date(Date.UTC(year, month - 1, 1));
+    const next = new Date(Date.UTC(year, month + 1, 1));
+    const prevVal = prev.getUTCFullYear() + '-' + String(prev.getUTCMonth() + 1).padStart(2, '0');
+    const nextVal = next.getUTCFullYear() + '-' + String(next.getUTCMonth() + 1).padStart(2, '0');
+
+    const cells = [];
+    for (let i = 0; i < startPad; i++) cells.push('<span class="cal-empty" aria-hidden="true"></span>');
+    for (let d = 1; d <= daysInMonth; d++) {
+      const ymd = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+      const tier = tiers.get(ymd) || 0;
+      const cls = ['cal-day', tier === 3 ? 'is-high' : tier === 2 ? 'is-rated' : tier === 1 ? 'is-scheduled' : 'is-rest',
+        ymd === selected ? 'is-selected' : ''].filter(Boolean).join(' ');
+      const title = tier === 3 ? '含 8.0+ 高分比赛' : tier === 2 ? '有已评分比赛' : tier === 1 ? '有赛程，暂无评分' : '无比赛日';
+      cells.push('<button type="button" class="' + cls + '" data-act="pickDate" data-val="' + ymd + '" title="' + ymd + ' · ' + title + '">' +
+        '<span>' + d + '</span>' + (tier ? '<i class="cal-dot" aria-hidden="true"></i>' : '') + '</button>');
+    }
+
+    pop.innerHTML =
+      '<div class="cal-head">' +
+        '<button type="button" class="cal-nav" data-act="calMonth" data-val="' + prevVal + '" aria-label="上个月">' + icon('left') + '</button>' +
+        '<strong>' + year + '年 ' + (month + 1) + '月</strong>' +
+        '<button type="button" class="cal-nav" data-act="calMonth" data-val="' + nextVal + '" aria-label="下个月">' + icon('right') + '</button>' +
+      '</div>' +
+      '<div class="cal-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>' +
+      '<div class="cal-grid">' + cells.join('') + '</div>' +
+      '<div class="cal-foot">' +
+        '<span class="cal-legend"><i class="cal-swatch high"></i>8.0+</span>' +
+        '<span class="cal-legend"><i class="cal-swatch rated"></i>已评</span>' +
+        '<span class="cal-legend"><i class="cal-swatch sched"></i>暂无评分</span>' +
+        (selected ? '<button type="button" class="cal-clear" data-act="clearDate">清除</button>' : '') +
+      '</div>';
+  }
+
+  function toggleCalendar() {
+    const pop = $('cal-popover');
+    const trigger = document.querySelector('[data-act="toggleCal"]');
+    if (!pop || !trigger) return;
+    const willOpen = pop.hidden;
+    if (!willOpen) { closeCalendar(); return; }
+    const seed = state.route.date || state.catalog.defaultMatchDate || new Date().toISOString().slice(0, 10);
+    const [y, m] = seed.split('-').map(Number);
+    renderCalendar(y, m - 1);
+    pop.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+  }
+
+  document.addEventListener('error', ev => {
+    const img = ev.target;
+    if (img?.tagName === 'IMG' && img.closest?.('.crest')) {
+      const box = img.closest('.crest');
+      box.classList.remove('has-img');
+      box.classList.add('is-fallback');
+      box.innerHTML = defaultCrestSvg();
+    }
+  }, true);
+
+  document.addEventListener('keydown', ev => {
+    if (ev.key === 'Escape' && $('cal-popover')?.hidden === false) {
+      closeCalendar();
+      document.querySelector('[data-act="toggleCal"]')?.focus();
+    }
+  });
+
   document.addEventListener('click', async ev => {
+    const pop = $('cal-popover');
+    if (pop && !pop.hidden && !ev.target.closest('.date-picker-wrap')) closeCalendar();
     const btn = ev.target.closest('[data-act]');
     if (!btn) return;
     const { act, val } = btn.dataset;
 
+    if (!state.catalog && act !== 'skip') return;
     switch (act) {
+      case 'skip':
+        ev.preventDefault();
+        $('main').focus();
+        break;
       case 'home':
         ev.preventDefault();
-        navigate({ view: 'date', league: 'all', date: defaultMatchDate });
-        break;
-      case 'view':
-        navigate({ view: val });
+        navigate({league:'all',date:''});
         break;
       case 'league':
-        if (val === 'all' && state.route.view === 'round') {
-          navigate({ view: 'date', league: 'all' });
-        } else {
-          navigate({ league: val });
-        }
-        break;
-      case 'prevDay':
-        stepCurrent(-1);
-        break;
-      case 'nextDay':
-        stepCurrent(1);
-        break;
-      case 'jumpDate':
-        navigate({ view: 'date', date: val });
+        navigate({league:val});
         break;
       case 'prevRound':
-        stepCurrent(-1);
+      case 'nextRound': {
+        const target = state.catalog.roundsByLeague[state.route.league].find(r => String(r) === val);
+        if (target != null) navigate({round:target,focus:'round-picker'});
         break;
-      case 'nextRound':
-        stepCurrent(1);
+      }
+      case 'toggleCal':
+        toggleCalendar();
+        break;
+      case 'calMonth': {
+        const [y, m] = val.split('-').map(Number);
+        const direction = btn.getAttribute('aria-label');
+        renderCalendar(y, m - 1);
+        $('cal-popover').querySelector('[aria-label="' + direction + '"]')?.focus();
+        break;
+      }
+      case 'pickDate':
+        closeCalendar();
+        if (isValidDate(val)) navigate({date:val,focus:'cal-trigger'});
+        break;
+      case 'clearDate':
+        closeCalendar();
+        navigate({date:'',focus:'cal-trigger'});
         break;
       case 'details':
-        openModal('details', val);
+        openDetails(val);
         break;
-      case 'team':
-        openModal('team', val);
-        break;
-      case 'search':
-      case 'bookmarks':
+      case 'method':
+      case 'watched':
       case 'about':
         openModal(act);
+        break;
+      case 'detailTab':
+        if (modal?.type === 'details') {
+          if (val === 'lineups' || val === 'substitutes' || state.peeked.has(modal.id)) {
+            detailTab = { activeTab: val, pendingTab: '' };
+          } else {
+            detailTab = { activeTab: detailTab.activeTab, pendingTab: val };
+          }
+          refreshFacts(modal.id, true);
+        }
+        break;
+      case 'confirmPeek':
+        if (modal?.type === 'details' && val) {
+          state.peeked.add(modal.id);
+          detailTab = { activeTab: val, pendingTab: '' };
+          refreshFacts(modal.id, true);
+        }
+        break;
+      case 'cancelPeek':
+        if (modal?.type === 'details') {
+          detailTab = { activeTab: detailTab.activeTab, pendingTab: '' };
+          refreshFacts(modal.id, true);
+        }
         break;
       case 'close':
         closeModal();
         break;
-      case 'reveal':
-        await revealMatch(val);
+      case 'retryDetails':
+        await loadFacts(val);
         break;
-      case 'hideScore':
-        if (modal?.id) {
-          state.revealed.delete(modal.id);
-          renderModal();
-        }
+      case 'watch':
+        setWatched(val, true);
         break;
-      case 'toggleBookmark':
-        if (state.bookmarks.has(val)) {
-          state.bookmarks.delete(val);
-          announce('已取消收藏');
-        } else {
-          state.bookmarks.add(val);
-          announce('已加入收藏');
-        }
-        writeStore('bookmarks', [...state.bookmarks]);
-        renderTopBar();
-        renderModal();
+      case 'removeWatched':
+        setWatched(val, false);
         break;
       case 'copyLink':
-        await copyMatchLink(val);
+        await copyMatchLink(val, btn);
         break;
       case 'theme':
         state.theme = state.theme === 'dark' ? 'light' : 'dark';
@@ -492,43 +608,29 @@
   });
 
   document.addEventListener('change', ev => {
-    if (ev.target.id === 'date-picker' && isValidDate(ev.target.value)) {
-      navigate({ view: 'date', date: ev.target.value });
+    if (ev.target.id === 'date-picker' && (!ev.target.value || isValidDate(ev.target.value))) {
+      navigate({date:ev.target.value,focus:'date-picker'});
+    } else if (ev.target.id === 'round-picker') {
+      const round = state.catalog.roundsByLeague[state.route.league].find(r => String(r) === ev.target.value);
+      if (round != null || ev.target.value === 'all') navigate({round,focus:'round-picker'});
     }
   });
 
-  document.addEventListener('input', ev => {
-    if (ev.target.id === 'team-query') {
-      const box = $('search-results');
-      if (box) box.innerHTML = teamSearchList(ev.target.value);
-    }
+  document.addEventListener('auxclick', ev => {
+    const link = ev.target.closest('a[data-act="watch"]');
+    if (ev.button === 1 && link) setWatched(link.dataset.val, true);
   });
-
-  document.addEventListener('keydown', ev => {
-    if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') {
-      ev.preventDefault();
-      openModal('search');
-      return;
-    }
-    if (dialog.open || ev.altKey || ev.ctrlKey || ev.metaKey) return;
-    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(ev.target.tagName)) return;
-    if (ev.key === 'ArrowLeft') { ev.preventDefault(); stepCurrent(-1); }
-    if (ev.key === 'ArrowRight') { ev.preventDefault(); stepCurrent(1); }
-  });
-
-  window.addEventListener('popstate', () => {
-    state.route = routeFromUrl(state.catalog);
-    closeModal();
-    render();
+  window.addEventListener('popstate', () => restoreRoute());
+  window.addEventListener('storage', ev => {
+    if (!state.catalog || (ev.key !== null && ev.key !== 'rate90.v2.watched')) return;
+    state.watched = readWatched([]);
+    syncWatched();
   });
 
   try {
     state.catalog = await loadCatalog();
-    state.route = routeFromUrl(state.catalog);
-    render();
-    if (state.route.match && state.catalog.byId.has(state.route.match)) {
-      openModal('details', state.route.match);
-    }
+    state.watched = readWatched([]);
+    restoreRoute(true);
   } catch {
     $('view').innerHTML = '<div class="state-card">比赛数据加载失败，请刷新页面重试。</div>';
   }

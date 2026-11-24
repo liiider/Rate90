@@ -2,5 +2,6 @@
 !.env.example
 .vercel/
 node_modules/
+dist/
 data/collector/
 data/round-tests/

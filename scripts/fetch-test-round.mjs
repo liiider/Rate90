@@ -5,7 +5,7 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {createBsdClient, summarize} from '../server/bsd.mjs';
 import {isOwnGoal, validShotProbability} from '../server/shot-profile.mjs';
 import {rateMatch, ruleVersion} from '../server/recommend.mjs';
-import {assetDirectory, readAsset} from '../server/collected-feed.mjs';
+import {assetDirectory, isFinishedFixture, readAsset} from '../server/collected-feed.mjs';
 
 const leagues = {pl:1,ll:3,sa:4,bl:5,l1:6,cl:7};
 const day = 86400000;
@@ -24,7 +24,7 @@ async function save(path, data) {
 
 export function selectRounds(fixtures) {
   return Object.entries(leagues).map(([league,leagueId]) => {
-    const round = Math.max(...fixtures.filter(f=>f.league===league && Number.isFinite(f.rating)).map(f=>f.round));
+    const round = Math.max(...fixtures.filter(f=>f.league===league && isFinishedFixture(f)).map(f=>f.round));
     const matches = fixtures.filter(f=>f.league===league && f.round===round);
     if (!matches.length) throw Error('没有可验证的轮次 '+league);
     return {league,leagueId,round,matches};

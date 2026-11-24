@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {loadDay, summarize} from './bsd.mjs';
+import {createBsdClient, dayBounds, loadDay, summarize} from './bsd.mjs';
 import {formatFeed, rateMatch, ruleVersion} from './recommend.mjs';
-import {getFeed} from '../api/matches.mjs';
+import {getFeed} from './matches-api.mjs';
 
 const archive = JSON.parse(await readFile(new URL('../data/bsd-sample.json', import.meta.url), 'utf8'));
 const first = archive.matches[0];
@@ -69,7 +69,7 @@ test('BSD own goals count once in highlights and the score timeline, with no att
 
 test('an own goal with no attacking shots supplies a timeline but no process rating', () => {
   const own = shot(47,true,'goal',null,{gtype:'own',period:1});
-  const raw = {...event,home_score:1,shotmap:[own,{...own,min:98,period:3},{...own,min:120,period:5}]};
+  const raw = {...event,home_score:1,shotmap:[own]};
   const match = summarize(raw);
   assert.equal(match.xg90,0);
   assert.equal(match.xgCount,0);
@@ -78,6 +78,11 @@ test('an own goal with no attacking shots supplies a timeline but no process rat
   assert.equal(match.shotEvidence.timeline.source,'shotmap');
   assert.equal(rateMatch(match).rating,null);
   assert.equal(summarize({...raw,shotmap:[]}).xg90,null);
+  const extended = summarize({...raw,shotmap:[own,{...own,min:98,period:3},{...own,min:120,period:5}]});
+  assert.equal(extended.score90,null);
+  assert.equal(extended.shotEvidence.timeline,null);
+  assert.equal(extended.shotEvidence.highlightCount,1);
+  assert.equal(extended.extraShots,0);
 });
 
 test('regulation time includes added time in its own half and excludes extra time and kicks', () => {
@@ -93,6 +98,11 @@ test('regulation time includes added time in its own half and excludes extra tim
   assert.equal(m.score90, null);
   assert.equal(rateMatch(m).analysis.suspenseMethod, 'late-chances-only');
   assert.equal(rateMatch(summarize({...raw, shotmap:[shot(97,true)]})).rating, null);
+  for (const extra of [{period:'AET'}, {incidents:[{type:'substitution',period:3}]}]) {
+    const match = summarize({...event,...extra,shotmap:[shot(97,true)]});
+    assert.equal(match.score90,null);
+    assert.equal(rateMatch(match).rating,null);
+  }
 });
 
 test('one attempt counts once; post-shot improvement, missing xGOT, penalties and xG provenance stay distinguishable', () => {
@@ -143,18 +153,18 @@ test('incident reconstruction requires a matching score; pressure uses well-cove
   assert.equal(summarize({...fields,home_score:2,incidents:ambiguous}).shotEvidence.timeline, null);
 });
 
-test('public list is spoiler-free, ties share rank and missing games sort last', () => {
+test('public cards and details omit scores and internal evidence; ties sort by ID, unrated games last', () => {
   const rows = [{...first,id:'c',xg90:null}, {...first,id:'b'}, {...first,id:'a'}];
   const feed = {matches:rows};
   const plain = formatFeed(feed), revealed = formatFeed(feed,true);
   assert.deepEqual(plain.matches.map(m => m.id), ['a','b','c']);
   assert.deepEqual(plain, formatFeed({matches:[...rows].reverse()}));
-  assert.deepEqual(revealed.matches.map(m=>m.details.processRank), [1,1,null]);
-  assert.deepEqual(revealed.matches.map(m=>m.details.goalsOnlyRank), [1,1,1]);
   for (const [i, card] of plain.matches.entries()) {
     const {details, ...same} = revealed.matches[i];
     assert.deepEqual(card, same);
     assert.deepEqual(Object.keys(card).sort(), ['id','stage','kickoff','home','away','rating','recommendation','topPick','viewing'].sort());
+    assert.deepEqual(Object.keys(card.viewing).sort(), ['styleIds','styles']);
+    assert.deepEqual(Object.keys(details).sort(), ['events','lineups','pressure','stats']);
   }
 });
 
@@ -180,9 +190,37 @@ test('API sample, vendor fixture transport and offline feeds all use the same sc
       url.search = new URLSearchParams({date,source:'sample',reveal:reveal?'1':'0'});
       const sample = await getFeed(url);
       assert.equal(sample.ruleVersion,ruleVersion);
-      const file = '../public/ui/data/sample-'+date+(reveal?'-details':'')+'.js';
-      const script = await readFile(new URL(file,import.meta.url),'utf8');
-      assert.deepEqual(JSON.parse(script.slice(script.indexOf(' = ')+3,script.lastIndexOf(';'))), sample);
+      const [start,end] = dayBounds(date);
+      const matches = archive.matches.filter(m => Date.parse(m.kickoff) >= +start && Date.parse(m.kickoff) < +end);
+      assert.deepEqual(sample.matches,formatFeed({matches},reveal).matches);
     }
   }
+});
+
+test('goal-line blocks count as blocks and preserve the value of other shot outcomes', () => {
+  const shots = [shot(10,true,'blocked-off-line'),shot(32,false,'post'),shot(64,false,'save',0.1,{xgot:0.6})];
+  const m = summarize({...event,shotmap:shots});
+  assert.deepEqual([m.shotEvidence.blockedShots,m.shotEvidence.highlightCount,m.shotEvidence.executionLifts],[1,2,1]);
+  assert.equal(rateMatch(m).analysis.highlightMethod,'shot-outcomes');
+});
+
+test('added time orders opposing goals; tied clocks require seconds or consistent cumulative scores', () => {
+  const goal = (home,added,score) => ({type:'goal',minute:90,is_home:home,added_time:added,
+    ...(score && {home_score:score[0],away_score:score[1]})});
+  const match = {...event,home_score:1,away_score:1,shotmap:[shot(10,true),shot(30,false)]};
+  const timeline = events => summarize({...match,incidents:events}).shotEvidence.timeline;
+  const a=goal(true,1), b=goal(false,5);
+  assert.equal(timeline([b,a]).lateSwingGoals,2);
+  assert.equal(timeline([goal(false,5,[1,1]),goal(true,5,[1,0])]).source,'incidents');
+  assert.equal(timeline([goal(true,5,[0,1]),goal(false,5,[1,1])]),null);
+  assert.equal(timeline([goal(true,5),goal(false,5)]),null);
+});
+
+test('vendor client propagates Retry-After and stops a never-ending calendar response', async () => {
+  const limited=createBsdClient('test',async()=>new Response(null,{status:429,headers:{'Retry-After':'3600'}}));
+  await assert.rejects(limited.event(1), {status:429,retryAfterMs:3600000});
+  let pages = 0;
+  const endless=createBsdClient('test',async()=>{pages++;return Response.json({results:[event],next:true});});
+  await assert.rejects(endless.list(1,...dayBounds('2026-11-22')),/50 页/);
+  assert.equal(pages,50);
 });

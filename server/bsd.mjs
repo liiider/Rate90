@@ -1,4 +1,8 @@
 import {pressureProfile, shotProfile, validScore} from './shot-profile.mjs';
+import {projectMatchDetail} from './match-detail.mjs';
+import {hasExtraTime, regulationStats} from './style-stats.mjs';
+
+import {incidentReasons} from './style-tags.mjs';
 
 const HOST = 'https://sports.bzzoiro.com';
 export const LEAGUES = new Map([[1,'英超'],[3,'西甲'],[4,'意甲'],[5,'德甲'],[6,'法甲'],[7,'欧冠']]);
@@ -17,12 +21,15 @@ export function dayBounds(day) {
 
 export function summarize(match) {
   const pressure = pressureProfile(match.momentum);
+  const extraTime = hasExtraTime(match);
+  const styleStats = regulationStats(match,extraTime);
   const scores = [match.home_score, match.away_score];
-  const score90 = !match.extra_time_score && !match.penalty_shootout && validScore(scores) ? scores : null;
+  const score90 = !extraTime && validScore(scores) ? scores : null;
   return {
     id:String(match.id), stage:LEAGUES.get(match.league?.id) || match.league?.name,
     kickoff:match.event_date, home:match.home_team, away:match.away_team,
-    score90, pressureMinutes:pressure?.values ?? null, ...shotProfile(match, score90, pressure)
+    score90, incidentReasons:incidentReasons(match,extraTime), pressureMinutes:pressure?.values ?? null, styleStats,
+    matchDetail:projectMatchDetail(match,styleStats,pressure?.values,extraTime), ...shotProfile(match,score90,pressure,extraTime)
   };
 }
 
@@ -35,12 +42,20 @@ export function createBsdClient(token, fetchImpl = fetch) {
       redirect:'error', signal:AbortSignal.timeout(8000)}).catch(error => {
       throw new Error('BSD 网络请求失败 (' + (error.cause?.code || error.name) + ')',{cause:error});
     });
-    if (!response.ok) throw Object.assign(new Error('BSD HTTP '+response.status), {status:response.status});
+    if (!response.ok) {
+      const error = Object.assign(new Error('BSD HTTP '+response.status), {status:response.status});
+      if (response.status === 429) {
+        const value = response.headers?.get('retry-after')?.trim();
+        const delay = /^\d+$/.test(value) ? Number(value)*1000 : Date.parse(value)-Date.now();
+        if (Number.isSafeInteger(delay) && delay >= 0) error.retryAfterMs = delay;
+      }
+      throw error;
+    }
     return response.json();
   }
   async function list(league, start, end, status) {
     const games = [];
-    for (let page = 1;; page++) {
+    for (let page = 1; page <= 50; page++) {
       const params = {league, date_from:start.toISOString().slice(0,10),
         date_to:new Date(+end - 1).toISOString().slice(0,10), page};
       if (status) params.status = status;
@@ -53,6 +68,7 @@ export function createBsdClient(token, fetchImpl = fetch) {
       }
       if (!result.next || !result.results.length) return games;
     }
+    throw new Error('BSD 赛程分页超过 50 页');
   }
   async function event(id, full = false) {
     const result = await get('/api/events/' + id + '/', full ? {full:'true'} : {});

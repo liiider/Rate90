@@ -1,18 +1,19 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#F5F3ED">
-  <meta name="description" content="Rate90 无剧透足球比赛评分。先看评分挑比赛，比分由你揭晓。">
+  <meta name="theme-color" content="#050506">
+  <script>try{if(JSON.parse(localStorage.getItem('rate90.v2.theme'))==='light'){document.documentElement.dataset.theme='light';document.querySelector('meta[name="theme-color"]')?.setAttribute('content','#F4F6FA');}}catch{}</script>
+  <meta name="description" content="Rate90 无剧透足球回看指南。按轮次、评分与推荐理由挑选欧冠与五大联赛回放。">
   <meta property="og:title" content="Rate90 · 无剧透足球比赛评分">
-  <meta property="og:description" content="先看评分挑一场值得回看的比赛，比分由你亲自揭晓。">
+  <meta property="og:description" content="用比赛评分、推荐理由和首发阵容，挑选值得回看的比赛。">
   <title>Rate90</title>
   <link rel="icon" href="./ui/mark.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./ui/site.css">
 </head>
 <body>
-  <a class="skip" href="#main">跳到比赛列表</a>
+  <a class="skip" href="#main" data-act="skip">跳到比赛列表</a>
 
   <header class="topbar">
     <div class="topbar-inner">
@@ -20,7 +21,7 @@
         <span class="brand-mark" aria-hidden="true">90</span>
         <span class="brand-word">
           <span class="brand-name">Rate<strong>90</strong></span>
-          <span class="brand-tag">先看分，再看球</span>
+          <span class="brand-tag">只看精彩足球</span>
         </span>
       </a>
 
@@ -31,20 +32,20 @@
   <div class="page-shell">
     <aside class="league-rail" id="league-rail" aria-label="联赛筛选"></aside>
 
-    <main id="main" class="main-col">
+    <main id="main" class="main-col" tabindex="-1">
       <div id="view" aria-live="polite">
         <div class="state-card">正在载入比赛评分…</div>
       </div>
-
-      <footer class="site-footer">
-        <span>2026/27 赛季评分快照 · 更新于 2026.11.22</span>
-        <div class="footer-links">
-          <span class="shortcut-hint"><kbd>←</kbd> <kbd>→</kbd> 切换 · <kbd>Ctrl K</kbd> 搜索</span>
-          <button type="button" class="text-btn" data-act="about">关于</button>
-        </div>
-      </footer>
     </main>
   </div>
+
+  <footer class="site-footer">
+    <span>© 2026 Rate90</span>
+    <nav class="footer-links" aria-label="页脚">
+      <button type="button" class="text-btn" data-act="about">关于 Rate90</button>
+      <button type="button" class="text-btn" data-act="method">评分方法</button>
+    </nav>
+  </footer>
 
   <dialog id="overlay" aria-modal="true">
     <div class="dialog-inner" id="dialog-body"></div>
@@ -52,9 +53,11 @@
 
   <div id="live-status" class="sr" role="status" aria-live="polite"></div>
 
+  <script defer src="./ui/vendor/morphicons-dom.js"></script>
   <script defer src="./ui/catalog.js"></script>
   <script defer src="./ui/components.js"></script>
   <script defer src="./ui/views.js"></script>
+  <script defer src="./ui/match-detail.js"></script>
   <script defer src="./ui/app.js"></script>
 </body>
 </html>

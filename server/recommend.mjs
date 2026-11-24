@@ -1,6 +1,8 @@
 import {validScore} from './shot-profile.mjs';
+import {matchStyles} from './style-tags.mjs';
+import {publicMatchDetail} from './match-detail.mjs';
 
-export const ruleVersion = 'rate90-1.0.1';
+export const ruleVersion = 'rate90-1.0.2';
 const weights = Object.freeze({threat:25, tempo:15, continuity:20, exchanges:15, highlights:10, suspense:15});
 const sum = values => values.reduce((a, b) => a + b, 0);
 const scaled = (value, full) => Math.min(1, Math.max(0, value / full));
@@ -102,51 +104,14 @@ export function rateMatch(match) {
   }};
 }
 
-function viewingProfile(match) {
-  const shots = counts(match.shotsByWindow, 6) ? sum(match.shotsByWindow) : null;
-  const windows = counts(match.chancesByWindow, 6) ? match.chancesByWindow : null;
-  const chances = windows ? sum(windows) : null;
-  const pressure = match.pressureMinutes ?? null;
-  if (shots === null && !pressure) return null;
-  const styles = [];
-  const sides = match.chanceSides;
-  if (counts(sides, 2) && sum(sides) === chances && Math.min(...sides) >= 3 && Math.min(...sides) * 3 >= chances) styles.push('双向对攻');
-  if (shots >= 30) styles.push('射门密集');
-  if (windows && chances >= 6 && windows.filter(n => n > 0).length >= 5) styles.push('机会贯穿全场');
-  if (chances >= 4 && Math.max(...windows) * 2 > chances) styles.push('机会集中');
-  if (shots !== null && shots <= 18 && chances !== null && chances <= 5) styles.push('节奏舒缓');
-  return {styles:styles.slice(0, 2), shots, chances, xg:Number.isFinite(match.xg90) ? match.xg90 : null,
-    pressure, shotsByWindow:shots !== null ? match.shotsByWindow : null};
-}
-
-function reason(match, analysis) {
-  if (!analysis) return '常规时间射门、机会归属或逐脚 xG 资料不足。';
-  const {shotCount, chanceCount, activeWindows, lateChances} = analysis;
-  const notes = [
-    '常规时间 ' + shotCount + ' 脚射门，' + chanceCount + ' 次关键机会分布在 ' + activeWindows + ' 个时段。',
-    '主客队分别创造 ' + match.chanceSides.join('、') + ' 次，最后 15 分钟有 ' + lateChances + ' 次。'
-  ];
-  if (match.difficultSaves > 0) notes.push('其中有 ' + match.difficultSaves + ' 次高难度扑救。');
-  const timeline = match.shotEvidence?.timeline;
-  if (analysis.suspenseMethod === 'verified-goal-timeline') notes.push('平局或仅差一球的时间为 ' + timeline.closeMinutes + ' 分钟。');
-  return notes.join('');
-}
-
-export function formatFeed(feed, reveal = false) {
+export function formatFeed(feed, includeDetails = false) {
   const {matches, ...meta} = feed;
   const rated = matches.map(match => ({match, ...rateMatch(match)}));
   rated.sort((a, b) => (b.rating ?? -1) - (a.rating ?? -1) ||
     a.match.kickoff.localeCompare(b.match.kickoff) || a.match.id.localeCompare(b.match.id));
-  const goals = matches.filter(m => validScore(m.score90)).map(m => sum(m.score90));
-  let processRank = null;
-  return {...meta, ruleVersion, matches:rated.map(({match, rating, recommendation, analysis}, index) => {
+  return {...meta, ruleVersion, matches:rated.map(({match, rating, recommendation}, index) => {
     const {id, stage, kickoff, home, away} = match;
-    const {pressureMinutes, ...evidence} = match;
-    const card = {id, stage, kickoff, home, away, rating, recommendation, viewing:viewingProfile(match), topPick:index === 0 && recommendation === '看全场'};
-    if (!reveal) return card;
-    if (index === 0 || rating !== rated[index - 1].rating) processRank = index + 1;
-    const total = validScore(match.score90) ? sum(match.score90) : null;
-    return {...card, details:{...evidence, analysis, reason:reason(match, analysis), processRank:rating === null ? null : processRank,
-      goalsOnlyRank:total === null ? null : 1 + goals.filter(n => n > total).length}};
+    const card = {id, stage, kickoff, home, away, rating, recommendation, viewing:matchStyles(match), topPick:index === 0 && recommendation === '看全场'};
+    return includeDetails ? {...card, details:publicMatchDetail(match)} : card;
   })};
 }
