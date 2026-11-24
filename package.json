@@ -10,6 +10,7 @@
     "build:snapshot": "node scripts/build-offline-sample.mjs",
     "verify:round": "node scripts/fetch-test-round.mjs --verify",
     "collect": "node --experimental-sqlite --env-file-if-exists=.env.local scripts/collect.mjs",
+    "bsd:pull": "node --experimental-sqlite --env-file-if-exists=.env.local scripts/pull-bsd-local.mjs",
     "collect:season": "node --experimental-sqlite --env-file-if-exists=.env.local scripts/collect.mjs --season",
     "collect:watch": "node --experimental-sqlite --env-file-if-exists=.env.local scripts/collect.mjs --watch",
     "collect:install": "python3 deploy/install-macos-collector.py",

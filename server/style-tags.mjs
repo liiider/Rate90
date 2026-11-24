@@ -1,7 +1,7 @@
 export const styleLabels = Object.freeze({
   'heavyweights':'强强对话', 'rivalry':'宿敌相逢', 'talisman':'关键先生', 'flashpoint-player':'问题人物',
   'contested-call':'争议判决', 'var-spotlight':'判罚焦点', 'end-to-end':'疯狂对攻',
-  'team-move':'流畅配合', 'keeper-show':'门将高光', 'late-drama':'尾声悬念'
+  'team-move':'流畅配合', 'keeper-show':'门将高光', 'late-drama':'尾声悬念', 'highlight-reel':'值得看集锦'
 });
 
 // UEFA 2025/26 quarter-finals, known before the 2026/27 season began.
@@ -72,7 +72,7 @@ export function incidentReasons(raw, extraTime) {
   };
 }
 
-export function matchStyles(match) {
+export function matchStyles(match, rating) {
   const home = club(match.home), away = club(match.away);
   const date = String(match.kickoff || '').slice(0,10);
   const sides = match.chanceSides, windows = match.chancesByWindow, shots = match.shotsByWindow;
@@ -88,7 +88,8 @@ export function matchStyles(match) {
     'rivalry':rivals.some(([a,b]) => (a === home && b === away) || (a === away && b === home)),
     'end-to-end':complete && sum(shots) >= 24 && Math.min(...sides) >= 4 && evidence.contestedWindows >= 2,
     'keeper-show':match.difficultSaves >= 3,
-    'late-drama':evidence.timeline?.lateCloseMinutes >= 12 && complete && windows[5] >= 3
+    'late-drama':evidence.timeline?.lateCloseMinutes >= 12 && complete && windows[5] >= 3,
+    'highlight-reel':Number.isFinite(rating) && rating < 8 && evidence.highlightSequence === true
   };
   const styleIds = Object.keys(styleLabels).filter(id => flags[id]);
   return {styleIds,styles:styleIds.map(id => styleLabels[id])};

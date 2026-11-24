@@ -440,12 +440,12 @@ svg {
 }
 
 .league-ic.dock-ic {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
   background: var(--surface);
   border: 1px solid var(--border);
-  padding: 4px;
+  padding: 5px;
   box-shadow: var(--shadow-xs);
 }
 
@@ -491,15 +491,17 @@ svg {
 .dock-title {
   display: inline-flex;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
   min-width: 0;
 }
 
 .dock-heading {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 3px;
   min-width: 0;
+  min-height: 44px;
 }
 
 .round-dock h1 {
@@ -508,7 +510,8 @@ svg {
   flex-wrap: wrap;
   gap: 0 7px;
   margin: 0;
-  font: 860 26px/1.1 var(--font-display);
+  min-height: 30px;
+  font: 860 26px/1.15 var(--font-display);
   letter-spacing: -0.04em;
   color: var(--ink);
 }
@@ -527,6 +530,8 @@ svg {
 
 .dock-span {
   font-size: 12px;
+  line-height: 1.35;
+  min-height: 16px;
   font-weight: 560;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
@@ -545,6 +550,7 @@ svg {
 
 .round-jump,
 .round-date {
+  position: relative;
   display: inline-flex;
   align-items: center;
 }
@@ -603,26 +609,174 @@ svg {
   background: color-mix(in srgb, var(--brand) 22%, transparent);
 }
 
-.round-control select.date-input {
-  width: 136px;
+.round-trigger {
+  width: 148px;
   height: 100%;
   border: 0;
   border-radius: 0;
-  box-shadow: none;
-  background-color: transparent;
-  padding: 0 24px 0 11px;
+  background: transparent;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 10px 0 12px;
   font-size: 13px;
-  line-height: 36px;
-  text-overflow: ellipsis;
-  background-position: right 8px center;
-  background-size: 13px;
+  font-weight: 660;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 0.14s ease, color 0.14s ease;
 }
 
-.round-control select.date-input:hover,
-.round-control select.date-input:focus-visible {
-  border-color: transparent;
-  box-shadow: none;
-  outline: none;
+.round-trigger:hover {
+  background: color-mix(in srgb, var(--surface-subtle) 55%, transparent);
+}
+
+.round-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.round-trigger .ico {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--ink-3);
+  transition: transform 0.16s ease, color 0.14s ease;
+}
+
+.round-trigger[aria-expanded="true"] .ico {
+  transform: rotate(180deg);
+  color: var(--brand);
+}
+
+.round-popover {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 40;
+  width: 224px;
+  max-height: min(520px, calc(100vh - 190px));
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.round-popover[hidden] {
+  display: none;
+}
+
+.round-opt-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+  flex: none;
+}
+
+.round-opt {
+  width: 100%;
+  min-height: 31px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 560;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.round-opt:hover {
+  background: var(--surface-subtle);
+  color: var(--ink);
+}
+
+.round-opt.is-future {
+  color: #4338CA;
+}
+
+:root[data-theme="dark"] .round-opt.is-future {
+  color: #C7D2FE;
+}
+
+.round-opt.is-selected {
+  background: var(--brand-soft);
+  border-color: var(--brand-border);
+  color: var(--brand);
+  font-weight: 740;
+}
+
+.round-opt.is-selected:hover {
+  background: color-mix(in srgb, var(--brand) 18%, var(--surface));
+  color: var(--brand);
+}
+
+.round-opt.is-future.is-selected {
+  background: var(--brand-soft);
+  border-color: var(--brand-border);
+  color: var(--brand);
+}
+
+.round-opt-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.round-opt-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+}
+
+.round-opt-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.round-opt-tag.is-future {
+  background: rgba(79, 70, 229, 0.10);
+  color: #4338CA;
+}
+
+:root[data-theme="dark"] .round-opt-tag.is-future {
+  background: rgba(129, 140, 248, 0.16);
+  color: #C7D2FE;
+}
+
+.round-opt-check {
+  display: inline-grid;
+  place-items: center;
+  color: currentColor;
+}
+
+.round-opt-check .ico {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.3;
 }
 
 /* Custom Color-Coded Matchday Calendar Picker */
@@ -3145,12 +3299,24 @@ dialog[data-view="details"] .dialog-inner {
     margin-bottom: 14px;
   }
 
+  .league-ic.dock-ic {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    padding: 4px;
+  }
+
+  .dock-heading {
+    min-height: 38px;
+  }
+
   .dock-title {
     width: 100%;
   }
 
   .round-dock h1 {
     font-size: 22px;
+    min-height: 26px;
   }
 
   .dock-round {
@@ -3165,7 +3331,28 @@ dialog[data-view="details"] .dialog-inner {
 
   .round-control,
   .date-trigger {
-    height: 32px;
+    height: 34px;
+  }
+
+  .round-nav-btn {
+    width: 34px;
+  }
+
+  .round-trigger {
+    width: 132px;
+    font-size: 12.5px;
+    padding: 0 8px 0 10px;
+  }
+
+  .round-jump {
+    position: static;
+  }
+
+  .round-popover {
+    left: 0;
+    right: auto;
+    width: min(240px, 100%);
+    max-height: min(380px, 60vh);
   }
 
   .date-input {
@@ -3395,10 +3582,11 @@ dialog[data-view="details"] .dialog-inner {
   }
 }
 
-/* ─── Upcoming Rounds & AI Prematch Picks (Midnight Starry Indigo + Cool Platinum) ─── */
+/* ─── Upcoming Rounds & Unified Score-Slot AI Prematch Cards (Midnight Starry Indigo + Cool Platinum) ─── */
 .dock-badge-future {
   display: inline-flex;
   align-items: center;
+  align-self: center;
   height: 22px;
   padding: 0 8px;
   margin-left: 4px;
@@ -3408,7 +3596,6 @@ dialog[data-view="details"] .dialog-inner {
   color: #4338CA;
   font: 700 11.5px/1 var(--font-sans);
   letter-spacing: 0.02em;
-  vertical-align: 2px;
 }
 
 :root[data-theme="dark"] .dock-badge-future {
@@ -3421,18 +3608,6 @@ dialog[data-view="details"] .dialog-inner {
   margin-top: 32px;
 }
 
-/* AI Prematch Spotlight Section */
-.preview-picks {
-  margin: 0 0 14px;
-}
-
-.picks-head {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin: 0 0 10px;
-}
-
 .picks-spark {
   font-size: 13px;
   line-height: 1;
@@ -3443,189 +3618,29 @@ dialog[data-view="details"] .dialog-inner {
   color: #A5B4FC;
 }
 
-.picks-head h2 {
-  margin: 0;
-  font: 780 14px/1.2 var(--font-display);
-  letter-spacing: -0.01em;
-  color: var(--ink);
-}
-
-.picks-sub {
-  margin-left: 2px;
-  font-size: 11.5px;
-  font-weight: 540;
-  color: var(--ink-3);
-}
-
-.picks-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  gap: 11px;
-}
-
-.picks-grid.is-single {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.pick-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px;
-  border-radius: 17px;
-  overflow: hidden;
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.18s ease, box-shadow 0.2s ease;
-}
-
-/* Primary Pick: Twilight / Midnight Starry Indigo Poster */
-.pick-card.is-primary {
-  background: linear-gradient(128deg, #0D1530 0%, #172756 50%, #233B7D 86%, #142147 100%);
-  border: 1px solid rgba(165, 180, 252, 0.38);
-  color: #F8FAFC;
-  box-shadow: 0 8px 20px -6px rgba(15, 23, 62, 0.36), inset 0 1px 0 rgba(224, 231, 255, 0.32);
-}
-
-.pick-card.is-primary::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 16px;
-  right: 16px;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.90) 30%, rgba(224, 231, 255, 0.95) 54%, rgba(56, 189, 248, 0.78) 76%, transparent);
-  pointer-events: none;
-}
-
-:root[data-theme="dark"] .pick-card.is-primary {
-  background: linear-gradient(128deg, #0B1126 0%, #142149 52%, #1E326C 86%, #111A3B 100%);
-  border-color: rgba(165, 180, 252, 0.34);
-  box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.72), 0 2px 8px -2px rgba(79, 70, 229, 0.26), inset 0 1px 0 rgba(224, 231, 255, 0.26);
-}
-
-.pick-glow {
-  background:
-    radial-gradient(ellipse 56% 125% at 88% 8%, rgba(129, 140, 248, 0.34), transparent 64%),
-    radial-gradient(ellipse 44% 100% at 8% 100%, rgba(56, 189, 248, 0.22), transparent 62%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 220' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23E0E7FF' stop-opacity='0.14'/%3E%3Cstop offset='1' stop-color='%23E0E7FF' stop-opacity='0'/%3E%3C/linearGradient%3E%3ClinearGradient id='b' x1='1' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%237DD3FC' stop-opacity='0.11'/%3E%3Cstop offset='1' stop-color='%237DD3FC' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon points='390,0 495,0 410,220 305,220' fill='url(%23a)'/%3E%3Cpolygon points='512,0 554,0 469,220 427,220' fill='url(%23b)'/%3E%3Cpath d='M-20 198 Q 220 40 620 156' fill='none' stroke='%23E0E7FF' stroke-opacity='0.14' stroke-width='1'/%3E%3Cg fill='%23C7D2FE'%3E%3Ccircle cx='540' cy='24' r='1.3' opacity='0.24'/%3E%3Ccircle cx='556' cy='24' r='1.3' opacity='0.20'/%3E%3Ccircle cx='572' cy='24' r='1.3' opacity='0.16'/%3E%3Ccircle cx='532' cy='38' r='1.2' opacity='0.18'/%3E%3Ccircle cx='548' cy='38' r='1.2' opacity='0.18'/%3E%3Ccircle cx='564' cy='38' r='1.2' opacity='0.14'/%3E%3Ccircle cx='524' cy='52' r='1.1' opacity='0.12'/%3E%3Ccircle cx='540' cy='52' r='1.1' opacity='0.13'/%3E%3C/g%3E%3C/svg%3E") center / cover no-repeat;
-}
-
-/* Secondary Pick: Refined Cool-Indigo Wireframe Card */
-.pick-card.is-secondary {
-  background: linear-gradient(130deg, #FFFFFF 0%, #F4F6FF 100%);
-  border: 1.5px solid rgba(99, 102, 241, 0.32);
-  color: var(--ink);
-}
-
-:root[data-theme="dark"] .pick-card.is-secondary {
-  background: linear-gradient(130deg, #0E1019 0%, #14192A 100%);
-  border-color: rgba(129, 140, 248, 0.34);
-}
-
-.pick-top {
-  position: relative;
+.preview-empty-picks {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.pick-rank {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 760;
-  letter-spacing: 0.03em;
-  background: rgba(79, 70, 229, 0.10);
-  color: #4338CA;
-}
-
-:root[data-theme="dark"] .pick-rank {
-  background: rgba(129, 140, 248, 0.16);
-  color: #C7D2FE;
-}
-
-.pick-rank.is-primary {
-  background: linear-gradient(135deg, #E0E7FF 0%, #C7D2FE 100%);
-  color: #1E1B4B;
-  box-shadow: 0 2px 10px rgba(129, 140, 248, 0.35);
-}
-
-.pick-time {
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-3);
-}
-
-.pick-card.is-primary .pick-time {
-  color: rgba(224, 231, 255, 0.80);
-}
-
-.pick-matchup {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-}
-
-.pick-matchup .side {
-  gap: 9px;
-}
-
-.pick-card.is-primary .team-name {
-  font-size: 16.5px;
-  font-weight: 820;
-  color: #FFFFFF;
-  text-shadow: 0 2px 10px rgba(7, 15, 42, 0.32);
-}
-
-.pick-card.is-primary .vs {
-  color: rgba(224, 231, 255, 0.62);
-}
-
-.pick-card.is-primary .crest.has-img img {
-  filter: drop-shadow(0 5px 14px rgba(5, 10, 32, 0.45)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.32));
-}
-
-.pick-card.is-secondary .team-name {
-  font-size: 15px;
-  font-weight: 740;
-}
-
-.pick-reason {
-  position: relative;
-  margin: 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
+  gap: 6px;
+  margin: 0 0 11px;
   font-size: 12.5px;
-  line-height: 1.62;
-  color: var(--ink-2);
+  font-weight: 560;
+  color: var(--ink-3);
 }
 
-.pick-card.is-primary .pick-reason {
-  border-top-color: rgba(224, 231, 255, 0.16);
-  color: rgba(241, 245, 249, 0.88);
-}
-
-/* Symmetric Upcoming Fixture Rows (Aligned with Rated Match Cards) */
+/* Unified Symmetric Upcoming Fixture Cards (AI Recommendations Pin to Top & Occupy the Score Slot) */
 .preview-row {
   position: relative;
   width: 100%;
   min-height: 70px;
-  display: grid;
-  grid-template-columns: 144px minmax(0, 1fr) 24px minmax(0, 1fr) 86px;
-  align-items: center;
-  gap: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   padding: 12px 18px;
   border-radius: 15px;
   background: color-mix(in srgb, var(--surface) 84%, var(--bg));
   border: 1px solid var(--border);
-  transition: border-color 0.16s ease, background-color 0.16s ease;
+  transition: border-color 0.16s ease, background-color 0.16s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .preview-row:hover {
@@ -3633,22 +3648,181 @@ dialog[data-view="details"] .dialog-inner {
   background: var(--surface);
 }
 
+.preview-main {
+  position: relative;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 144px minmax(0, 1fr) 24px minmax(0, 1fr) 86px;
+  align-items: center;
+  gap: 10px;
+}
+
+/* #1 AI Strongly Recommended Card (Midnight Starry Indigo Poster — Mirrors Rated Hero Card) */
 .preview-row.is-pick-primary {
-  border-color: rgba(99, 102, 241, 0.42);
-  background: linear-gradient(120deg, var(--surface) 0%, rgba(99, 102, 241, 0.055) 100%);
+  padding: 17px 18px 15px;
+  border-radius: 18px;
+  background: linear-gradient(126deg, #0B1126 0%, #14224C 50%, #1F3573 86%, #111A3B 100%);
+  border: 1px solid rgba(165, 180, 252, 0.38);
+  color: #FFFFFF;
+  box-shadow: 0 8px 20px -6px rgba(15, 23, 62, 0.36), inset 0 1px 0 rgba(224, 231, 255, 0.34);
+}
+
+.preview-row.is-pick-primary::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 18px;
+  right: 18px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.90) 30%, rgba(224, 231, 255, 0.96) 54%, rgba(56, 189, 248, 0.78) 76%, transparent);
+  pointer-events: none;
+}
+
+.preview-row.is-pick-primary:hover {
+  background: linear-gradient(126deg, #0E1630 0%, #192A5C 50%, #25408A 86%, #152048 100%);
+  border-color: rgba(199, 210, 254, 0.62);
 }
 
 :root[data-theme="dark"] .preview-row.is-pick-primary {
-  border-color: rgba(129, 140, 248, 0.42);
-  background: linear-gradient(120deg, #10121C 0%, #151B30 100%);
+  box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.72), 0 2px 8px -2px rgba(79, 70, 229, 0.28), inset 0 1px 0 rgba(224, 231, 255, 0.26);
 }
 
+.pick-glow {
+  background:
+    radial-gradient(ellipse 48% 130% at 86% 10%, rgba(129, 140, 248, 0.36), transparent 64%),
+    radial-gradient(ellipse 38% 100% at 8% 100%, rgba(56, 189, 248, 0.22), transparent 60%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 840 160' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23E0E7FF' stop-opacity='0.14'/%3E%3Cstop offset='1' stop-color='%23E0E7FF' stop-opacity='0'/%3E%3C/linearGradient%3E%3ClinearGradient id='b' x1='1' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%237DD3FC' stop-opacity='0.11'/%3E%3Cstop offset='1' stop-color='%237DD3FC' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon points='555,0 690,0 600,160 465,160' fill='url(%23a)'/%3E%3Cpolygon points='710,0 764,0 674,160 620,160' fill='url(%23b)'/%3E%3Cpolygon points='0,0 148,0 72,160 0,160' fill='url(%23b)'/%3E%3Cpath d='M-24 148 Q 310 18 864 114' fill='none' stroke='%23E0E7FF' stroke-opacity='0.15' stroke-width='1'/%3E%3Cpath d='M190 176 Q 520 36 864 10' fill='none' stroke='%237DD3FC' stroke-opacity='0.10' stroke-width='0.9'/%3E%3Cg fill='%23C7D2FE'%3E%3Ccircle cx='768' cy='22' r='1.3' opacity='0.24'/%3E%3Ccircle cx='784' cy='22' r='1.3' opacity='0.22'/%3E%3Ccircle cx='800' cy='22' r='1.3' opacity='0.18'/%3E%3Ccircle cx='760' cy='36' r='1.2' opacity='0.18'/%3E%3Ccircle cx='776' cy='36' r='1.2' opacity='0.20'/%3E%3Ccircle cx='792' cy='36' r='1.2' opacity='0.16'/%3E%3Ccircle cx='752' cy='50' r='1.1' opacity='0.13'/%3E%3Ccircle cx='768' cy='50' r='1.1' opacity='0.15'/%3E%3C/g%3E%3C/svg%3E") center / cover no-repeat;
+}
+
+.preview-row.is-pick-primary .time-val {
+  color: rgba(224, 231, 255, 0.88);
+}
+
+.preview-row.is-pick-primary .team-name {
+  font-size: 17.5px;
+  font-weight: 840;
+  letter-spacing: -0.025em;
+  color: #FFFFFF;
+  text-shadow: 0 2px 10px rgba(7, 15, 42, 0.34);
+}
+
+.preview-row.is-pick-primary .vs {
+  color: rgba(224, 231, 255, 0.65);
+  font-size: 11px;
+}
+
+.preview-row.is-pick-primary .crest.has-img img {
+  filter: drop-shadow(0 5px 14px rgba(5, 10, 32, 0.45)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.32));
+}
+
+.preview-row.is-pick-primary .crest.is-fallback {
+  color: rgba(224, 231, 255, 0.72);
+}
+
+/* #2 AI Worth-Watching Card (Cool-Indigo Wireframe — Mirrors Rated 8.0+ Wireframe Card) */
 .preview-row.is-pick-secondary {
-  border-color: rgba(99, 102, 241, 0.24);
+  padding: 14px 18px 13px;
+  border-radius: 16px;
+  background: linear-gradient(122deg, #FFFFFF 0%, #F4F6FF 100%);
+  border: 1.5px solid rgba(79, 70, 229, 0.36);
+}
+
+.preview-row.is-pick-secondary:hover {
+  border-color: rgba(79, 70, 229, 0.62);
+  background: linear-gradient(122deg, #FFFFFF 0%, #EEF2FF 100%);
 }
 
 :root[data-theme="dark"] .preview-row.is-pick-secondary {
-  border-color: rgba(129, 140, 248, 0.24);
+  background: linear-gradient(122deg, #0E1019 0%, #141A2E 100%);
+  border-color: rgba(129, 140, 248, 0.40);
+}
+
+:root[data-theme="dark"] .preview-row.is-pick-secondary:hover {
+  border-color: rgba(165, 180, 252, 0.66);
+  background: linear-gradient(122deg, #111420 0%, #19213B 100%);
+}
+
+/* Score-Slot AI Plaques (Replaces Score Plaque Position Directly) */
+.ai-plaque {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 80px;
+  height: 46px;
+  border-radius: 12px;
+  flex: none;
+  line-height: 1;
+}
+
+.ai-plaque b {
+  font: 860 13.5px/1 var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.ai-plaque small {
+  font-size: 9.5px;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  opacity: 0.72;
+}
+
+.ai-plaque.is-primary {
+  background: linear-gradient(138deg, #FFFFFF 0%, #E0E7FF 40%, #A5B4FC 100%);
+  color: #171546;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 0 22px 2px rgba(129, 140, 248, 0.44),
+    inset 0 1.5px 0 #FFFFFF;
+}
+
+.ai-plaque.is-secondary {
+  height: 44px;
+  background: rgba(79, 70, 229, 0.10);
+  border: 1px solid rgba(79, 70, 229, 0.30);
+  color: #3730A3;
+}
+
+:root[data-theme="dark"] .ai-plaque.is-secondary {
+  background: rgba(129, 140, 248, 0.15);
+  border-color: rgba(165, 180, 252, 0.36);
+  color: #E0E7FF;
+}
+
+/* Plan A Inline AI Rationale (Inside Top-Pinned Recommended Cards Only) */
+.preview-reason {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  line-height: 1.62;
+  color: var(--ink-2);
+}
+
+.preview-reason-tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 780;
+  letter-spacing: 0.03em;
+  color: #4F46E5;
+}
+
+:root[data-theme="dark"] .preview-reason-tag {
+  color: #A5B4FC;
+}
+
+.preview-row.is-pick-primary .preview-reason {
+  border-top-color: rgba(224, 231, 255, 0.16);
+  color: rgba(241, 245, 249, 0.90);
+}
+
+.preview-row.is-pick-primary .preview-reason-tag {
+  color: #C7D2FE;
 }
 
 .preview-time {
@@ -3671,7 +3845,7 @@ dialog[data-view="details"] .dialog-inner {
   vertical-align: 0.5px;
 }
 
-.pick-card.is-primary .time-tbd {
+.preview-row.is-pick-primary .time-tbd {
   background: rgba(255, 255, 255, 0.14);
   color: rgba(224, 231, 255, 0.88);
 }
@@ -3680,37 +3854,6 @@ dialog[data-view="details"] .dialog-inner {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-}
-
-.preview-pick-badge {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 720;
-  background: rgba(79, 70, 229, 0.09);
-  border: 1px solid rgba(79, 70, 229, 0.24);
-  color: #4338CA;
-}
-
-.preview-pick-badge.is-primary {
-  background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%);
-  border-color: transparent;
-  color: #FFFFFF;
-}
-
-:root[data-theme="dark"] .preview-pick-badge {
-  background: rgba(129, 140, 248, 0.13);
-  border-color: rgba(129, 140, 248, 0.30);
-  color: #C7D2FE;
-}
-
-:root[data-theme="dark"] .preview-pick-badge.is-primary {
-  background: linear-gradient(135deg, #E0E7FF 0%, #A5B4FC 100%);
-  border-color: transparent;
-  color: #1E1B4B;
 }
 
 .preview-leg {
@@ -3732,32 +3875,30 @@ dialog[data-view="details"] .dialog-inner {
   opacity: 0.72;
 }
 
-@media (max-width: 820px) {
-  .picks-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 @media (max-width: 640px) {
-  .pick-card {
-    padding: 14px 15px;
+  .preview-row {
+    min-height: 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+  }
+
+  .preview-row.is-pick-primary {
+    padding: 14px 14px 13px;
+    border-radius: 16px;
+  }
+
+  .preview-row.is-pick-secondary {
+    padding: 13px 14px 12px;
     border-radius: 15px;
   }
 
-  .pick-card.is-primary .team-name {
-    font-size: 15px;
-  }
-
-  .preview-row {
-    min-height: 0;
+  .preview-main {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       "time status"
-      "home home"
-      "away away";
+      "home status"
+      "away status";
     gap: 6px 10px;
-    padding: 12px 14px;
-    border-radius: 14px;
   }
 
   .preview-time {
@@ -3766,6 +3907,7 @@ dialog[data-view="details"] .dialog-inner {
 
   .preview-status {
     grid-area: status;
+    align-self: center;
   }
 
   .preview-row .side.home {
@@ -3784,5 +3926,18 @@ dialog[data-view="details"] .dialog-inner {
 
   .preview-row .vs {
     display: none;
+  }
+
+  .preview-row.is-pick-primary .team-name {
+    font-size: 16px;
+  }
+
+  .ai-plaque {
+    width: 72px;
+    height: 42px;
+  }
+
+  .ai-plaque b {
+    font-size: 12.5px;
   }
 }

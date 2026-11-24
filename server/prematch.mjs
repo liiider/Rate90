@@ -81,15 +81,18 @@ export function matchForm(raw) {
       side.chances[Math.min(5,Math.floor(Math.max(0,minute-1)/15))]++;
     }
   }
+  if (teams.every(side=>side.shots===0)) return null;
   for (const side of teams) side.npxg=Number(side.npxg.toFixed(2));
   return teams;
 }
 
 export function teamHistory(db, now) {
   const teams = new Map();
-  const rows = db.prepare(`SELECT fixture,facts FROM games WHERE json_extract(fixture,'$.status')='finished'
-    AND json_extract(fixture,'$.kickoff') < ? AND first_at <= ? AND facts IS NOT NULL
-    ORDER BY json_extract(fixture,'$.kickoff') DESC,id DESC`).iterate(now,now);
+  const rows = db.prepare(`SELECT fixture,CASE WHEN COALESCE(fetched_at,first_at)<=? THEN facts END AS facts
+    FROM games WHERE json_extract(fixture,'$.status')='finished'
+    AND json_extract(fixture,'$.replacedBy') IS NULL AND json_extract(fixture,'$.kickoff') < ?
+    AND (first_at<=? OR observed_at<=?)
+    ORDER BY json_extract(fixture,'$.kickoff') DESC,id DESC`).iterate(now,now,now,now);
   for (const row of rows) {
     const f=JSON.parse(row.fixture);
     const names=[f.home,f.away];
@@ -104,6 +107,21 @@ export function teamHistory(db, now) {
     }
   }
   return teams;
+}
+
+// Each frequency counts matches in the same set of usable shot maps.
+export function recentPattern(recent) {
+  const usable=recent.filter(match=>match.for && match.against);
+  let twoSided=0, bothHalves=0, lateThreatFor=0, lateThreatAgainst=0;
+  for (const match of usable) {
+    const attack=match.for.chances, conceded=match.against.chances;
+    if (attack.some(Boolean) && conceded.some(Boolean)) twoSided++;
+    const active=attack.map((n,i)=>n+conceded[i]>0);
+    if (active.slice(0,3).some(Boolean) && active.slice(3).some(Boolean)) bothHalves++;
+    if (attack[5]>0) lateThreatFor++;
+    if (conceded[5]>0) lateThreatAgainst++;
+  }
+  return {samples:usable.length,twoSided,bothHalves,lateThreatFor,lateThreatAgainst};
 }
 
 export function tableRows(table) {
@@ -137,6 +155,13 @@ export const scopesFor = (rounds,extra=[]) => {
     if (!days.has(date)) days.set(date,[]);
     days.get(date).push(game);
   }
-  for (const [day,games] of days) scopes.set('date/'+day,games);
+  for (const [day,games] of days) {
+    const scope='date/'+day;
+    scopes.set(scope,games);
+    const leagues=new Set(games.map(g=>g.league));
+    if (leagues.size>1) for (const league of leagues) {
+      scopes.set(scope+'/'+league,games.filter(g=>g.league===league));
+    }
+  }
   return scopes;
 };

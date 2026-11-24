@@ -40,10 +40,21 @@ cd "$app"
 check_version() {
   run_node --input-type=module -e "import {ruleVersion} from './server/recommend.mjs'; import {assetDirectory,readAsset} from './server/collected-feed.mjs'; if((await readAsset(assetDirectory,'collected-index')).ruleVersion !== ruleVersion) process.exit(1); console.log(ruleVersion);"
 }
-if [[ "$previous" == "$revision" ]] && running && check_version; then echo RATE90_COLLECTOR_OK; exit 0; fi
+archive_seed="$stage/bsd-raw.sqlite"
+if [[ -f "$archive_seed" ]]; then
+  python3 "$stage/bsd-seed.py" merge "$archive_seed" "$app/data/collector/bsd-raw.sqlite"
+elif [[ "$previous" == "$revision" ]] && running && check_version; then echo RATE90_COLLECTOR_OK; exit 0; fi
 was_running=false
-if running; then was_running=true; service_stop; fi
 saved="$stage/previous.tar"
+queue="$app/data/collector/rate90.sqlite"
+backup_queue() {
+  python3 - "$1" "$2" <<'PY'
+import sqlite3, sys
+from pathlib import Path
+with sqlite3.connect(Path(sys.argv[1]).resolve().as_uri()+'?mode=ro', uri=True) as src, sqlite3.connect(sys.argv[2]) as dest:
+    src.backup(dest)
+PY
+}
 had_index=false
 if [[ -f public/ui/data/collected-index.js ]]; then had_index=true; fi
 recover() {
@@ -55,18 +66,28 @@ recover() {
       tar -xf "$saved" -C "$app"
       if [[ "$had_index" == false ]]; then rm -f "$app/public/ui/data/collected-index.js"; fi
     fi
+    if [[ -f "$stage/previous-queue.sqlite" ]]; then backup_queue "$stage/previous-queue.sqlite" "$queue"; fi
     if [[ "$was_running" == true ]]; then service_start; fi
   fi
   exit "$code"
 }
 trap recover EXIT
+if running; then was_running=true; service_stop; fi
 items=(server scripts package.json REVISION .rate90-release data/bsd-sample.json public/ui/data/fixtures.js public/ui/data/teams.js public/ui/data/process-ratings.js)
 if [[ -f public/ui/data/collected-index.js ]]; then items+=(public/ui/data/collected-index.js); fi
 tar -cf "$saved.part" "${items[@]}"
 mv "$saved.part" "$saved"
+if [[ -f "$archive_seed" ]]; then
+  backup_queue "$queue" "$stage/previous-queue.part"
+  mv "$stage/previous-queue.part" "$stage/previous-queue.sqlite"
+fi
 # The release contains code, the offline archive and its immutable day files only.
 (cd "$stage/release" && tar -cf - server scripts package.json REVISION data/bsd-sample.json public) | tar -xf -
-run_node scripts/collect.mjs --publish-only
+if [[ -f "$archive_seed" ]]; then
+  run_node scripts/collect.mjs --publish-only --import-archive
+else
+  run_node scripts/collect.mjs --publish-only
+fi
 check_version
 service_start
 running

@@ -21,7 +21,8 @@
         .concat((feed.extra||[]).filter(inLeague))
         .filter(g=>g.kickoff>now && day(g)===route.date)
         .sort((a,b)=>a.kickoff-b.kickoff || a.id.localeCompare(b.id));
-      return games.length?[{scope:'date/'+route.date,games,span:cnDate(route.date)}]:[];
+      const scope='date/'+route.date;
+      return games.length?[{scope:route.league==='all'?scope:scope+'/'+route.league,dayScope:scope,games,span:cnDate(route.date)}]:[];
     }
     const byLeague=new Map();
     for (const r of rounds) {
@@ -56,65 +57,67 @@
     const team=t=>({...catalog.team(t.id),zh:t.zh});
     return sections.map(section=>{
       const byId=new Map(section.games.map(g=>[g.id,g]));
-      const record=catalog.prematch.picks?.[section.scope];
-      const validPicks=Boolean(record?.ids?.length===byId.size &&
+      const picks=catalog.prematch.picks;
+      const record=picks?.[section.scope]??picks?.[section.dayScope];
+      const validPicks=Boolean(Array.isArray(record?.ids) && record.ids.length===byId.size &&
+        new Set(record.ids).size===byId.size &&
         record.ids.every(id=>byId.has(id)) &&
-        record.items.every(p=>byId.has(p.id)));
-      const pickRank=new Map();
-      if (validPicks) record.items.forEach((p,i)=>pickRank.set(p.id,i));
+        Array.isArray(record.items) && record.items.every(p=>byId.has(p?.id) && typeof p.reason==='string'));
+      const pickMap=new Map();
+      if (validPicks) record.items.forEach((p,i)=>pickMap.set(p.id,{rank:i,reason:p.reason}));
+
+      const ordered=validPicks && record.items.length
+        ? [...record.items.map(p=>byId.get(p.id)), ...section.games.filter(g=>!pickMap.has(g.id))]
+        : section.games;
 
       const heading=(!merged && section.title)
         ? '<header class="round-heading preview-round">'+(section.league?leagueIcon(section.league,'heading-ic'):'')+
             '<h2>'+e(section.title)+'</h2>'+(section.span?'<span>'+e(section.span)+'</span>':'')+'</header>'
         : '';
 
-      let picksHtml='';
-      if (validPicks && record.items.length) {
-        picksHtml='<section class="preview-picks" aria-label="AI 赛前推荐">'+
-          '<div class="picks-head"><span class="picks-spark" aria-hidden="true">✦</span><h2>AI 赛前推荐</h2><span class="picks-sub">基于近期过程与对位精选</span></div>'+
-          '<div class="picks-grid'+(record.items.length===1?' is-single':'')+'">'+
-          record.items.map((p,i)=>{
-            const g=byId.get(p.id), home=team(g.home), away=team(g.away), isTop=i===0;
-            return '<article class="pick-card '+(isTop?'is-primary':'is-secondary')+'">'+
-              (isTop?'<span class="card-glow pick-glow" aria-hidden="true"></span>':'')+
-              '<div class="pick-top">'+
-                '<span class="pick-rank'+(isTop?' is-primary':'')+'">'+(isTop?'首选焦点':'次选关注')+'</span>'+
-                '<time class="pick-time">'+formatKickoff(g)+'</time>'+
-              '</div>'+
-              '<div class="pick-matchup">'+
-                '<span class="side home"><span class="team-name">'+e(home.zh)+'</span>'+crest(home,isTop?'hero':'card')+'</span>'+
-                '<span class="vs">vs</span>'+
-                '<span class="side away">'+crest(away,isTop?'hero':'card')+'<span class="team-name">'+e(away.zh)+'</span></span>'+
-              '</div>'+
-              '<p class="pick-reason">'+e(p.reason)+'</p>'+
-            '</article>';
-          }).join('')+
-        '</div></section>';
-      }
+      const emptyNote=(validPicks && !record.items.length)
+        ? '<p class="preview-empty-picks"><span class="picks-spark" aria-hidden="true">✦</span><span>AI 赛前评估 · 本轮暂无全场推荐</span></p>'
+        : '';
 
-      const listHtml='<div class="preview-list card-stack">'+section.games.map(g=>{
+      const listHtml='<div class="preview-list card-stack">'+ordered.map(g=>{
         const home=team(g.home), away=team(g.away);
-        const rank=pickRank.get(g.id);
-        const statusHtml=rank===0
-          ? '<span class="preview-pick-badge is-primary">首选</span>'
-          : rank===1
-            ? '<span class="preview-pick-badge">次选</span>'
-            : g.leg
-              ? '<span class="preview-leg">'+(g.leg===1?'首回合':'次回合')+'</span>'
-              : '<span class="preview-upcoming-tag">未开赛</span>';
-        return '<article class="preview-row'+(rank===0?' is-pick-primary':rank===1?' is-pick-secondary':'')+'">'+
-          '<div class="preview-time">'+(showLeagueIcon?leagueIcon(g.league,'card-ic'):'')+
-            '<time class="time-val">'+formatKickoff(g)+'</time>'+
+        const pick=pickMap.get(g.id);
+        const isPrimary=pick?.rank===0;
+        const isSecondary=pick?.rank===1;
+        const crestSize=isPrimary?'hero':'card';
+
+        let statusHtml='';
+        if (isPrimary) {
+          statusHtml='<span class="ai-plaque is-primary" aria-label="AI 强烈推荐"><b>强烈推荐</b><small>✦ AI</small></span>';
+        } else if (isSecondary) {
+          statusHtml='<span class="ai-plaque is-secondary" aria-label="AI 值得一看"><b>值得一看</b><small>✦ AI</small></span>';
+        } else if (g.leg) {
+          statusHtml='<span class="preview-leg">'+(g.leg===1?'首回合':'次回合')+'</span>';
+        } else {
+          statusHtml='<span class="preview-upcoming-tag">未开赛</span>';
+        }
+
+        const reasonHtml=pick
+          ? '<p class="preview-reason"><span class="preview-reason-tag">✦ AI</span><span class="pick-reason">'+e(pick.reason)+'</span></p>'
+          : '';
+
+        return '<article class="preview-row'+(pick?' pick-card':'')+(isPrimary?' is-pick-primary':isSecondary?' is-pick-secondary':'')+'">'+
+          (isPrimary?'<span class="card-glow pick-glow" aria-hidden="true"></span>':'')+
+          '<div class="preview-main">'+
+            '<div class="preview-time">'+(showLeagueIcon?leagueIcon(g.league,'card-ic'):'')+
+              '<time class="time-val">'+formatKickoff(g)+'</time>'+
+            '</div>'+
+            '<span class="side home"><span class="team-name">'+e(home.zh)+'</span>'+crest(home,crestSize)+'</span>'+
+            '<span class="vs">vs</span>'+
+            '<span class="side away">'+crest(away,crestSize)+'<span class="team-name">'+e(away.zh)+'</span></span>'+
+            '<div class="preview-status">'+statusHtml+'</div>'+
           '</div>'+
-          '<span class="side home"><span class="team-name">'+e(home.zh)+'</span>'+crest(home,'card')+'</span>'+
-          '<span class="vs">vs</span>'+
-          '<span class="side away">'+crest(away,'card')+'<span class="team-name">'+e(away.zh)+'</span></span>'+
-          '<div class="preview-status">'+statusHtml+'</div>'+
+          reasonHtml+
         '</article>';
       }).join('')+'</div>';
 
       return '<section class="round-group preview-group"'+(section.league?' data-league="'+e(section.league)+'"':'')+'>'+
-        heading+picksHtml+listHtml+'</section>';
+        heading+emptyNote+listHtml+'</section>';
     }).join('');
   }
   function leagueRounds(feed,league,now=Date.now()) {

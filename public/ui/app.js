@@ -454,6 +454,26 @@
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
   }
 
+  function closeRoundMenu() {
+    const pop = $('round-popover');
+    if (pop) pop.hidden = true;
+    const trigger = $('round-trigger');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleRoundMenu() {
+    const pop = $('round-popover');
+    const trigger = $('round-trigger');
+    if (!pop || !trigger) return;
+    const willOpen = pop.hidden;
+    if (!willOpen) { closeRoundMenu(); return; }
+    closeCalendar();
+    pop.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    const target = pop.querySelector('.round-opt.is-selected');
+    target?.scrollIntoView?.({ block: 'nearest' });
+  }
+
   function renderCalendar(year, month) {
     const pop = $('cal-popover');
     if (!pop || !state.catalog) return;
@@ -502,6 +522,7 @@
     if (!pop || !trigger) return;
     const willOpen = pop.hidden;
     if (!willOpen) { closeCalendar(); return; }
+    closeRoundMenu();
     const seed = state.route.date || state.catalog.defaultMatchDate || new Date().toISOString().slice(0, 10);
     const [y, m] = seed.split('-').map(Number);
     renderCalendar(y, m - 1);
@@ -530,15 +551,22 @@
   }, true);
 
   document.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape' && $('cal-popover')?.hidden === false) {
-      closeCalendar();
-      document.querySelector('[data-act="toggleCal"]')?.focus();
+    if (ev.key === 'Escape') {
+      if ($('round-popover')?.hidden === false) {
+        closeRoundMenu();
+        $('round-trigger')?.focus();
+      } else if ($('cal-popover')?.hidden === false) {
+        closeCalendar();
+        document.querySelector('[data-act="toggleCal"]')?.focus();
+      }
     }
   });
 
   document.addEventListener('click', async ev => {
     const pop = $('cal-popover');
     if (pop && !pop.hidden && !ev.target.closest('.date-picker-wrap')) closeCalendar();
+    const rpop = $('round-popover');
+    if (rpop && !rpop.hidden && !ev.target.closest('.round-jump')) closeRoundMenu();
     const btn = ev.target.closest('[data-act]');
     if (!btn) return;
     const { act, val } = btn.dataset;
@@ -560,9 +588,16 @@
         state.previewError=false;
         render();
         break;
+      case 'toggleRoundMenu':
+        toggleRoundMenu();
+        break;
+      case 'pickRound':
+        closeRoundMenu();
+        chooseRound(val, 'round-trigger');
+        break;
       case 'prevRound':
       case 'nextRound': {
-        chooseRound(val);
+        chooseRound(val, 'round-trigger');
         break;
       }
       case 'toggleCal':
@@ -638,13 +673,13 @@
     }
   });
 
-  function chooseRound(value) {
+  function chooseRound(value, focus = 'round-picker') {
     if (value==='next' || value==='following') {
-      navigate({future:true,horizon:value==='following'?2:1,focus:'round-picker'});
+      navigate({future:true,horizon:value==='following'?2:1,focus});
       return;
     }
     const round=state.catalog.roundsByLeague[state.route.league].find(r=>String(r)===value);
-    if (round!=null || value==='all') navigate({round,focus:'round-picker'});
+    if (round!=null || value==='all') navigate({round,focus});
   }
 
   document.addEventListener('change', ev => {

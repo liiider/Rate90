@@ -316,3 +316,28 @@ test('one round picker selects upcoming and historical fixtures and survives sco
   select('all');
   assert.equal(picker().value,'all');
 });
+
+test('upcoming picks distinguish an empty selection, an unassessed date and a league-specific selection',async t=>{
+  const now=Date.parse('2026-11-23T09:00:00Z');
+  const {window,document}=await openApp(t,home,{},now);
+  const {catalog,upcoming}=window.Rate90;
+  const data=await catalog.loadCatalog();
+  const feed=await catalog.loadPrematch(data.prematchFile);
+  const first=feed.rounds.find(r=>r.league==='pl').games[0];
+  const other={...feed.rounds.find(r=>r.league==='cl').games[0],kickoff:first.kickoff};
+  const date=upcoming.day(first);
+  const scope='date/'+date, record={ids:[first.id,other.id],items:[]};
+  const preview={rounds:[],extra:[first,other],picks:{[scope]:record}};
+  const render=league=>{
+    const sections=upcoming.sections(preview,{date,league},now);
+    const panel=document.createElement('div');
+    panel.innerHTML=upcoming.view({...data,prematch:preview},sections);
+    return panel;
+  };
+  assert.match(render('all').textContent,/暂无全场推荐/);
+  assert.doesNotMatch(render('pl').textContent,/暂无全场推荐/);
+  preview.picks[scope+'/pl']={ids:[first.id],items:[{id:first.id,reason:'双方近期都在末段创造机会。'}]};
+  assert.equal(render('pl').querySelectorAll('.pick-card').length,1);
+  assert.equal(render('pl').querySelector('.pick-reason').textContent,'双方近期都在末段创造机会。');
+  assert.equal(render('cl').querySelector('.pick-card'),null);
+});

@@ -54,40 +54,52 @@ export function createBsdClient(token, fetchImpl = fetch) {
     return response.json();
   }
   async function list(league, start, end, status) {
-    const games = [];
-    for (let page = 1; page <= 50; page++) {
-      const params = {league, date_from:start.toISOString().slice(0,10),
-        date_to:new Date(+end - 1).toISOString().slice(0,10), page};
-      if (status) params.status = status;
-      const result = await get('/api/events/', params);
-      if (!Array.isArray(result.results)) throw new Error('BSD 缺少赛程列表');
-      for (const event of result.results) {
-        const at = Date.parse(event.event_date);
-        if (event.league?.id === league && Number.isSafeInteger(event.id) && at >= +start && at < +end &&
-            (!status || event.status === status)) games.push(event);
-      }
-      if (!result.next || !result.results.length) return games;
-    }
-    throw new Error('BSD 赛程分页超过 50 页');
+    const params = {league, date_from:start.toISOString().slice(0,10),
+      date_to:new Date(+end - 1).toISOString().slice(0,10)};
+    if (status) params.status = status;
+    return (await fixtures(params,50)).filter(event=>{
+      const at = Date.parse(event.event_date);
+      return event.league?.id === league && Number.isSafeInteger(event.id) && at >= +start && at < +end &&
+        (!status || event.status === status);
+    });
   }
   async function event(id, full = false) {
     const result = await get('/api/events/' + id + '/', full ? {full:'true'} : {});
     if (result.id !== id) throw new Error('BSD 场次不一致');
     return result;
   }
-  async function fixtures(params) {
+  async function fixtures(params,maxPages=100) {
     const matches = [];
-    for (let page = 1; page <= 100; page++) {
-      const answer = await get('/api/events/', {...params,page});
+    let cursor = {page:1};
+    const seen = new Set();
+    for (let page = 1; page <= maxPages; page++) {
+      const tag = new URLSearchParams(cursor).toString();
+      if (seen.has(tag)) throw new Error('BSD 赛程分页游标重复');
+      seen.add(tag);
+      const answer = await get('/api/events/', {...params,...cursor});
       if (!Array.isArray(answer.results)) throw new Error('BSD 赛程格式异常');
       matches.push(...answer.results);
       if (!answer.next) return matches;
-      if (!answer.results.length) break;
+      if (!answer.results.length) throw new Error('BSD 赛程未读取完整');
+      if (answer.next === true) { cursor = {page:page+1}; continue; }
+      // The live v1 endpoint advances offset even when page stays at 1.
+      const next = String(answer.next);
+      const query = new URL(/^(page|offset|limit)=/.test(next) ? '?'+next : next, HOST+'/api/events/').searchParams;
+      cursor = {};
+      for (const key of ['page','limit','offset']) {
+        if (query.has(key) && /^\d+$/.test(query.get(key))) cursor[key]=query.get(key);
+      }
+      if (cursor.page == null && cursor.offset == null) throw new Error('BSD 赛程分页游标无效');
     }
-    throw new Error('BSD 赛程未读取完整');
+    throw new Error('BSD 赛程分页超过 '+maxPages+' 页');
   }
-  return {list, event,
-    season: league => get('/api/v2/leagues/'+league+'/season/',{}),
+  async function season(league) {
+    const payload = await get('/api/v2/leagues/'+league+'/season/',{});
+    const current = payload && Object.hasOwn(payload,'season') ? payload.season : payload;
+    if (!Number.isSafeInteger(current?.id) || current.id <= 0) throw new Error('BSD 赛季 ID 无效 '+league);
+    return current;
+  }
+  return {list, event, season,
     seasonFixtures: (league,season) => fixtures({league,season}),
     standings: (league,season) => get('/api/v2/leagues/'+league+'/standings/',{season_id:season}),
     teamFixtures: (team,from,to) => fixtures({team,date_from:from,date_to:to}),

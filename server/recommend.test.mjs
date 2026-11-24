@@ -12,6 +12,42 @@ const event = {id:1, league:{id:1}, event_date:'2026-11-21T15:00:00Z', status:'f
 const shot = (min, home, type = 'miss', xg = 0.18, extra = {}) => ({min, home, type, xg, ...extra});
 const rateShots = (shots, fields) => rateMatch(summarize({...event, ...fields, shotmap:shots}));
 
+test('unanswered one-goal leads require covered minutes without pressure from the chasing side', () => {
+  const trace = awayPress => Array.from({length:90}, (_, i) =>
+    ({m:i+1, v:i>=38 && i<42 ? awayPress : 0}));
+  const shots = [shot(20,true,'goal'),shot(70,false,'goal')];
+  const evidence = momentum => summarize({...event,home_score:1,away_score:1,shotmap:shots,momentum}).shotEvidence;
+  assert.equal(evidence(trace(0)).responses.unansweredMinutes,20);
+  assert.equal(evidence(trace(60)).responses.unansweredMinutes,20);
+  assert.equal(evidence(trace(-60)).responses.unansweredMinutes,0);
+  assert.equal(evidence(null).responses.unansweredMinutes,0);
+});
+
+test('a completed two-goal recovery can establish exchanges across different phases', () => {
+  const shots = [shot(5,true,'goal'),shot(20,true,'goal'),shot(48,false,'goal'),shot(59,false,'goal'),
+    shot(75,false,'goal'),shot(82,true,'miss',0.5),shot(90,true,'goal')];
+  const full = rateShots(shots,{home_score:3,away_score:3});
+  assert.equal(full.analysis.components.exchanges.points,15);
+  const incomplete = summarize({...event,home_score:2,away_score:1,shotmap:shots.slice(0,3)});
+  assert.equal(incomplete.shotEvidence.responses.recoveredDeficit,0);
+  const broken = summarize({...event,home_score:0,away_score:1,shotmap:shots});
+  assert.equal(broken.shotEvidence.responses,null);
+});
+
+test('a concentrated sequence can earn highlights at a low rating without raising that rating', () => {
+  const card = shotmap => formatFeed({matches:[summarize({...event,shotmap})]}).matches[0];
+  const chances = [shot(19,true,'post',0.03),shot(21,true,'save',0.02,{xgot:0.45}),shot(25,true,'miss',0.4)];
+  const reel = card(chances);
+  assert.ok(reel.rating < 4.5);
+  assert.equal(reel.recommendation,'看集锦');
+  assert.ok(reel.viewing.styleIds.includes('highlight-reel'));
+  for (const minutes of [[19,19,25],[42,44,46]]) {
+    const other = card(chances.map((s,i)=>({...s,min:minutes[i]})));
+    assert.ok(!other.viewing.styleIds.includes('highlight-reel'));
+    assert.equal(other.recommendation,'可跳过');
+  }
+});
+
 test('all 12 archived games have bounded reproducible component scores, unaffected by reference ratings', () => {
   for (const m of archive.matches) {
     const result = rateMatch(m);

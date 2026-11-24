@@ -1,6 +1,6 @@
 import {atomicAsset,assetDirectory,optionalIndex} from './collected-feed.mjs';
 import {LEAGUES,beijingDate} from './bsd.mjs';
-import {DAY,codes,initPrematch,nextRounds,scheduleGame,scopesFor,signature,standingContext,tableRows,teamHistory} from './prematch.mjs';
+import {DAY,codes,initPrematch,nextRounds,recentPattern,scheduleGame,scopesFor,signature,standingContext,tableRows,teamHistory} from './prematch.mjs';
 import {aiSettings,promptVersion,selectGames} from './prematch-ai.mjs';
 
 const nameKey = s => s.normalize('NFKC').trim().toLowerCase();
@@ -47,11 +47,11 @@ function scheduleLoad(rows,g) {
 
 // Keep private source observations and exact model inputs on the collector. Publish only fixtures and approved fields.
 export async function refreshPrematch(db,base,client,{now=Date.now(),dir=assetDirectory,ai=aiSettings(),ask=selectGames,
-  enrichmentLimit=32,modelLimit=4}={}) {
+  enrichmentLimit=32,modelLimit=4,allowInference=Boolean(client)}={}) {
   initPrematch(db);
-  const cached=db.prepare('SELECT observed,data FROM preview_sources WHERE key=?');
+  const cached=db.prepare('SELECT observed,data FROM preview_sources WHERE key=? AND observed<=?');
   const save=db.prepare('INSERT OR REPLACE INTO preview_sources VALUES (?,?,?)');
-  const read=k=>{const r=cached.get(k);return r?{at:r.observed,value:JSON.parse(r.data)}:null;};
+  const read=k=>{const r=cached.get(k,now);return r?{at:r.observed,value:JSON.parse(r.data)}:null;};
   const errors=[];
   let quota=enrichmentLimit,paused=Number(read('retry:bsd')?.value)>now;
   async function source(key,ttl,load,limited=false) {
@@ -90,6 +90,8 @@ export async function refreshPrematch(db,base,client,{now=Date.now(),dir=assetDi
       async()=>tableRows(await client.standings(league,season.value.id))));
   }
   const history=teamHistory(db,now);
+  const patterns=new Map([...history].map(([key,recent])=>[key,recentPattern(recent)]));
+  const names=new Map(base.teams.map(t=>[nameKey(t.en),{id:t.id,zh:t.zh}]));
   const games=[...extra,...rounds.flatMap(r=>r.games)].sort((a,b)=>a.kickoff-b.kickoff);
   const last=games.at(-1)?.kickoff??now;
   const ext=new Map();
@@ -124,39 +126,43 @@ export async function refreshPrematch(db,base,client,{now=Date.now(),dir=assetDi
   let modelCalls=0;
   for (const [scope, fixtures] of scopes) {
     const teams={};
-    const candidates=fixtures.map(g=>{
+    const candidates=[];
+    for (const g of fixtures) {
       const {calendar,d,firstLeg}=ext.get(g.id),table=tables.get(g.league);
+      if (![g.home,g.away].every(name=>patterns.get(g.league+'/'+name)?.samples)) continue;
       for (const [name,id] of [[g.home,g.homeId],[g.away,g.awayId]]) {
-        const k=g.league+'/'+name;
-        teams[k]={recent:history.get(k)??[],table:table?{asOf:table.at,standing:standingContext(table.value,name,id)}:null};
+        const key=g.league+'/'+name;
+        teams[key]={name:names.get(nameKey(name))?.zh??name,recent:history.get(key),pattern:patterns.get(key),
+          table:table?{asOf:table.at,standing:standingContext(table.value,name,id)}:null};
       }
-      return {id:g.id,competition:g.league,round:g.round,home:g.home,away:g.away,kickoff:g.timeKnown===false?beijingDate(new Date(g.kickoff)):new Date(g.kickoff).toISOString(),
-        calendar,firstLeg,unavailable:d?{asOf:d.at,players:d.value.unavailable}:null};
-    });
-    const context={games:candidates,teams};
-    const fingerprint=signature([promptVersion,modelName,scope,context]);
-    let prediction=db.prepare('SELECT created,result FROM preview_predictions WHERE scope=? AND fingerprint=?').get(scope,fingerprint);
-    if (!prediction && client && ai && modelCalls<modelLimit && (Number(read('retry:ai')?.value)||0)<=now &&
-      candidates.some(g=>teams[g.competition+'/'+g.home].recent.length || teams[g.competition+'/'+g.away].recent.length)) {
+      candidates.push({id:g.id,competition:g.league,round:g.round,home:g.home,away:g.away,kickoff:g.timeKnown===false?beijingDate(new Date(g.kickoff)):new Date(g.kickoff).toISOString(),
+        calendar,firstLeg,unavailable:d?{asOf:d.at,players:d.value.unavailable}:null});
+    }
+    if (!candidates.length) continue;
+    const context={promptVersion,games:candidates,teams};
+    const fingerprint=signature([modelName,scope,context]);
+    let prediction=db.prepare('SELECT created,result FROM preview_predictions WHERE scope=? AND fingerprint=? AND created<=?').get(scope,fingerprint,now);
+    if (!prediction && allowInference && ai && modelCalls<modelLimit && (Number(read('retry:ai')?.value)||0)<=now) {
       modelCalls++;
       try {
-        const result=await ask(ai,{asOf:new Date(now).toISOString(),...context});
+        const input={asOf:new Date(now).toISOString(),...context};
+        const result=await ask(ai,input);
         if (fixtures.some(g=>g.kickoff<=Math.max(now,Date.now())) && Math.abs(Date.now()-now)<DAY) continue;
         prediction={created:now,result:JSON.stringify(result)};
-        db.prepare('INSERT OR IGNORE INTO preview_predictions VALUES (?,?,?,?,?,?)').run(scope,fingerprint,now,modelName,JSON.stringify(context),prediction.result);
+        db.prepare('INSERT OR IGNORE INTO preview_predictions VALUES (?,?,?,?,?,?)').run(scope,fingerprint,now,modelName,JSON.stringify(input),prediction.result);
       } catch(e) {
         save.run('retry:ai',now,JSON.stringify(now+15*60000));errors.push('AI 推荐 '+e.message);
       }
     }
     if (!prediction) {
       // A later source update may arrive while a replacement prediction is pending.
-      const old=db.prepare('SELECT created,result,context FROM preview_predictions WHERE scope=? AND model=? ORDER BY created DESC LIMIT 1').get(scope,modelName);
+      const old=db.prepare(`SELECT created,result,context FROM preview_predictions WHERE scope=? AND model=?
+        AND json_extract(context,'$.promptVersion')=? AND created<=? ORDER BY created DESC LIMIT 1`).get(scope,modelName,promptVersion,now);
       const lineup=games=>games.map(g=>[g.id,g.home,g.away,g.kickoff]);
       if (old && now-old.created<DAY && JSON.stringify(lineup(JSON.parse(old.context).games))===JSON.stringify(lineup(candidates))) prediction=old;
     }
-    if (prediction) picks[scope]={at:prediction.created,ids:candidates.map(g=>g.id),items:JSON.parse(prediction.result)};
+    if (prediction) picks[scope]={at:prediction.created,ids:fixtures.map(g=>g.id),items:JSON.parse(prediction.result)};
   }
-  const names=new Map(base.teams.map(t=>[nameKey(t.en),{id:t.id,zh:t.zh}]));
   const publicGame=g=>({
     id:g.id,league:g.league,round:g.round,kickoff:g.kickoff,timeKnown:g.timeKnown!==false,
     home:names.get(nameKey(g.home))??{id:g.home,zh:g.home},away:names.get(nameKey(g.away))??{id:g.away,zh:g.away}

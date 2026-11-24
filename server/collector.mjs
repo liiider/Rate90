@@ -193,6 +193,49 @@ function saveDetail(db, event, row, now) {
     .run(phase,due,serialized,first,keepOld ? current.fetched_at : now,stylesAt,row.id);
 }
 
+// Replay the latest full BSD observation per match through the same projection as live data.
+export function importArchivedEvents(db, archive, after = 0) {
+  const rows = archive.prepare(`SELECT c.path,c.observed_at,b.json FROM
+    (SELECT path,max(observed_at) AS observed_at FROM captures
+     WHERE path GLOB '/api/events/[0-9]*/[?]full=true' AND observed_at>? GROUP BY path) c
+    JOIN captures USING(path,observed_at) JOIN bodies b USING(hash) ORDER BY c.path`);
+  const existing = db.prepare('SELECT * FROM games WHERE id=?');
+  const restoreFixture = db.prepare('UPDATE games SET fixture=?,observed_at=? WHERE id=?');
+  const restoreReview = db.prepare('UPDATE games SET phase=?,due=? WHERE id=?');
+  const report = {finished:0, imported:0, retained:0, through:after};
+  transaction(db, () => {
+    for (const capture of rows.iterate(after)) {
+      const event = JSON.parse(capture.json);
+      if (capture.path !== '/api/events/'+event.id+'/?full=true') throw Error('归档比赛 ID 不符');
+      const at = capture.observed_at, fixture = fixtureOf(event);
+      report.through = Math.max(report.through,at);
+      const finished = fixture.status === 'finished';
+      if (finished) report.finished++;
+      const row = existing.get(event.id);
+      const newerFixture = row?.fixture && row.observed_at >= at;
+      const previous = newerFixture && JSON.parse(row.fixture);
+      if ((row?.fetched_at >= at) || (newerFixture && (!finished || previous.status !== fixture.status ||
+          previous.kickoff !== fixture.kickoff || previous.replacedBy))) {
+        report.retained++;
+        continue;
+      }
+      if (finished) {
+        if (at - fixture.kickoff < firstCheck && row?.facts) { report.retained++; continue; }
+        const historical = at - fixture.kickoff >= DAY;
+        saveDetail(db,event,{id:event.id,phase:historical ? 'backfill' : row?.phase},at);
+        if (historical && at - fixture.kickoff >= DAY + firstCheck) {
+          db.prepare("UPDATE games SET phase='done', due=NULL WHERE id=? AND facts IS NOT NULL").run(event.id);
+        } else if (row?.due > at && ['review','last'].includes(row.phase)) {
+          restoreReview.run(row.phase,row.due,event.id);
+        }
+        if (newerFixture) restoreFixture.run(row.fixture,row.observed_at,event.id);
+      } else observe(db,event,at);
+      report.imported++;
+    }
+  });
+  return report;
+}
+
 function calendarWindow(now) {
   const midnight = Math.floor((now + offset) / DAY) * DAY - offset;
   return {start:new Date(midnight-2*DAY),end:new Date(midnight+8*DAY),
