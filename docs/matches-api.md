@@ -1,6 +1,6 @@
 # Rate90 比赛评分接口
 
-比赛日接口用于本地服务。Vercel 静态站直接读取 `public/ui/data/` 下的文件。
+比赛日接口由 Node.js 服务提供。静态部署直接读取 `public/ui/data/` 下的评分快照。
 
 项目根目录执行 `npm run dev`。BSD 实时请求从服务端环境变量 `BSD_API_TOKEN` 读取凭据。
 
@@ -12,7 +12,7 @@
 | 读取固定样本 | `/api/matches?date=2026-11-22&source=sample` |
 | 加载首发、技术统计及换人和牌类事件 | 在相同查询后加 `&details=1`，旧参数 `reveal=1` 也返回同一组字段 |
 
-看球日从北京时间前一天 12:00 起，到当天 12:00 结束，包含起点。显式选择 `source=sample` 时，2026-11-22 有五大联赛 10 场，2026-11-05 有欧冠 2 场。默认查询合并发布的归档与采集器数据。
+看球日从北京时间前一天 12:00 起，到当天 12:00 结束，包含起点。`source=sample` 读取采集端的 `data/bsd-sample.json`。原始测试样本中，2026-11-22 有五大联赛 10 场，2026-11-05 有欧冠 2 场。默认查询合并发布的归档与采集器数据。
 
 列表包含 `id`、`stage`、`kickoff`、`home`、`away`、`rating` 和 `viewing`。`viewing.styleIds` 与 `viewing.styles` 同序，分别为图标使用的稳定 ID 和中文名称。评分保留一位小数。接口在同分时按开球时间和比赛 ID 排序，缺分的场次排在最后。
 
@@ -32,7 +32,7 @@
 
 例如凌晨 03:00 开球，05:05 首查，仍在进行则 05:20 再查。若 05:20 确认完赛并取得详情，11:20 复查，必要时次日 05:20 最后补查。
 
-在项目目录运行以下命令启动常驻采集器。
+按[采集准备步骤](../README.md#自行采集和更新)配置 BSD 密钥和样本文件后，在项目根目录启动常驻采集器。
 
 ```sh
 npm run collect:watch
@@ -44,10 +44,15 @@ BSD 返回 429 时，采集器对全部联赛暂停请求，至少等待 15 分�
 
 历史回填使用比赛 ID 建立持久队列，每批最多补 8 场，优先处理新完赛比赛。取得完整过程数据的历史比赛直接发布，字段不足的次日再查。
 
-Linux 用户服务模板在 [rate90-collector.service](../deploy/rate90-collector.service)。模板使用 `~/Rate90` 和系统 PATH 中的 Node。项目路径不同时修改 `WorkingDirectory`，通过 nvm 安装 Node 时把 `ExecStart` 中的 Node 换为实际绝对路径。以下命令安装并启动用户服务。
+Linux 可使用仓库提供的 [systemd 用户服务模板](../deploy/rate90-collector.service)。在仓库根目录执行以下命令安装模板。
 
 ```sh
 install -Dm644 deploy/rate90-collector.service ~/.config/systemd/user/rate90-collector.service
+```
+
+编辑已安装的服务文件，将 `WorkingDirectory` 设为仓库的实际绝对路径（模板默认 `%h/Rate90`）。如果 Node 由 nvm 等版本管理器安装，将 `ExecStart` 中的 `/usr/bin/env node` 换为 `command -v node` 返回的绝对路径。保存后执行以下命令启动服务并查看日志。
+
+```sh
 systemctl --user daemon-reload
 systemctl --user enable --now rate90-collector.service
 journalctl --user -u rate90-collector.service -f
@@ -90,7 +95,7 @@ journalctl --user -u rate90-collector.service -f
 | `pressure` | 常规时间逐分钟攻势，正值代表主队，负值代表客队，缺测分钟为 `null` |
 | `events` | 换人及黄牌、两黄变红、红牌，带主客队、分钟与补时 |
 
-`npm run verify:round` 从本轮 66 份原始响应复算评分。`npm run build:snapshot` 使用同一算法生成公开索引、列表与按日详情。评分分项可在后端 `rateMatch(match).analysis.components` 中复核。[当前数据覆盖](../README.md#当前数据)
+`npm run verify:round` 从本轮 66 份原始响应复算评分。`npm run build:snapshot` 使用同一算法生成公开索引、列表与按日详情。评分分项可在后端 `rateMatch(match).analysis.components` 中复核。[运行与数据准备](../README.md#自行采集和更新)
 
 ## 数据源费用口径
 
