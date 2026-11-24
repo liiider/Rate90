@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Rate90 足球回看指南，以不剧透的方式挑比赛。"><title>Rate90 · 足球回看指南</title>
+<style>
+:root{color-scheme:light;--ink:#152b22;--paper:#f7f7f1;--line:#cbd4c9;--muted:#53635b;--green:#174d3b;--lime:#d6f580}*{box-sizing:border-box}body{background:var(--paper);color:var(--ink);margin:0;font:16px/1.65 Inter,"Microsoft YaHei",system-ui,sans-serif}header{border-bottom:1px solid var(--line)}.wrap{max-width:860px;margin:auto;padding:0 24px}.nav,.foot,.title,.dates,.actions{display:flex;align-items:center;justify-content:space-between;gap:12px}.nav{height:65px}.brand{font:900 italic 28px/1 Arial,sans-serif;letter-spacing:-1.5px}.brand b{color:#518047}.sub,.meta,footer,.hint{color:var(--muted);font-size:13px}.intro{background:var(--green);color:white;padding:30px 36px 31px;position:relative;overflow:hidden;margin:34px 0;border-radius:5px}.pitch{position:absolute;right:-6%;top:15%;width:33%;height:110%;border:1px solid #699581;transform:rotate(-14deg);pointer-events:none}.pitch:after,.pitch:before{content:"";position:absolute}.pitch:after{width:33%;aspect-ratio:1;border-radius:50%;border:1px solid #699581;left:33%;top:24%}.pitch:before{height:100%;border-left:1px solid #699581;left:50%}.intro p,.intro h1{position:relative;margin:0}.intro p{color:var(--lime);font-size:14px;font-weight:650}.intro h1{font-size:clamp(28px,5vw,46px);letter-spacing:-.055em;margin-top:3px}.title{align-items:baseline}.title h2{font-size:21px;margin:0}.hint{margin:6px 0 20px}.match{border-top:1px solid var(--line);padding:18px 0}.match:last-child{border-bottom:1px solid var(--line)}.dates{justify-content:flex-start;color:var(--muted);font-size:13px;gap:9px}.match h3{margin:6px 0 12px;font-size:25px;letter-spacing:-.04em}.versus{font-size:13px;font-weight:500;color:var(--muted);padding:0 7px}.actions{justify-content:flex-start;flex-wrap:wrap}.btn,select{background:transparent;color:var(--green);border:1px solid #aebdb1;border-radius:4px;min-height:38px;padding:6px 13px;font:600 14px/1.4 inherit;font-family:inherit;font-size:14px;cursor:pointer}.btn:hover,select:hover{background:#e8ecdf}.btn:focus-visible,select:focus-visible{outline:3px solid #54973e;outline-offset:2px}.detail{margin-top:14px;background:#eaf0e6;border-radius:4px;padding:16px 20px}.detail p{margin:0 0 11px}.bins{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;max-width:510px;margin:10px 0 15px}.col{display:flex;flex-direction:column;justify-content:flex-end;color:var(--muted);font-size:11px}.bar{background:#598666;border-radius:2px 2px 0 0;margin:3px 0}.source{font-size:13px;color:var(--green)}.foot{padding:24px 0 32px;flex-wrap:wrap}.foot img{width:88px;max-height:43px;object-fit:contain}.foot a{color:inherit}.foot p{margin:0}.pick{color:var(--muted);font-size:13px;display:flex;align-items:center;gap:7px}@media(max-width:560px){.wrap{padding:0 16px}.intro{margin:20px 0;padding:23px 20px}.match h3{font-size:22px}.detail{padding:13px 12px}.actions{gap:8px}.pitch{opacity:.48}.nav{height:54px}}
+</style></head><body><header><div class="wrap nav"><span class="brand">Rate<b>90</b></span><span class="sub">足球回看指南</span></div></header><main class="wrap"><section class="intro"><div class="pitch" aria-hidden="true"></div><p>2022 世界杯 · 历史样本</p><h1>哪场值得看全场？</h1></section>
+<div class="title"><h2>比赛清单</h2><span class="meta">3 场 · 按日期</span></div><p class="hint">看过的比赛可以留下判断。点击「揭晓数据」后显示赛况。</p><section id="matches" aria-label="比赛清单"></section><footer class="foot"><p>数据来自 <a href="https://github.com/hudl/open-data" rel="noreferrer" target="_blank">StatsBomb Open Data</a></p><img alt="StatsBomb" src="https://raw.githubusercontent.com/hudl/open-data/master/img/SB%20-%20Icon%20Lockup%20-%20Colour%20positive.png"></footer></main>
+<script id="data" type="application/json">[{"id":"3869685","home":"阿根廷","away":"法国","date":"2022-12-18","stage":"决赛","score90":[2,2],"shotsByWindow":[2,2,2,3,3,6],"xg90":2.78,"extraShots":12,"source":"https://github.com/hudl/open-data/blob/master/data/events/3869685.json","chain":"第 36 分钟，莫利纳 → 麦卡利斯特 → 梅西 → 阿尔瓦雷斯 → 麦卡利斯特 → 迪马利亚，随后完成射门。","possession":52,"eventId":"ef86f4d9-7acd-4ed0-a5ec-9129079e8fbe"},{"id":"3869684","home":"克罗地亚","away":"摩洛哥","date":"2022-12-17","stage":"季军赛","score90":[2,1],"shotsByWindow":[4,3,5,2,3,4],"xg90":1.84,"extraShots":0,"source":"https://github.com/hudl/open-data/blob/master/data/events/3869684.json"},{"id":"3869220","home":"摩洛哥","away":"西班牙","date":"2022-12-06","stage":"八分之一决赛","score90":[0,0],"shotsByWindow":[1,1,2,1,0,5],"xg90":0.61,"extraShots":8,"source":"https://github.com/hudl/open-data/blob/master/data/events/3869220.json"}]</script>
+<script>
+const matches = JSON.parse(document.getElementById('data').textContent);
+const windows = ["1–15′","16–30′","31–45′+","46–60′","61–75′","76–90′+"];
+const choices = ['看全场','看集锦','可跳过'];
+function el(tag, cls, content) {
+  const item = document.createElement(tag);
+  if (cls) item.className = cls;
+  if (content !== undefined) item.textContent = content;
+  return item;
+}
+function buildDetail(match) {
+  const box = el('div','detail');
+  const total = match.shotsByWindow.reduce((a,b) => a+b,0);
+  box.append(el('p','', '常规时间 '+match.score90.join(' ∶ ')+'　·　双方共 '+total+' 次射门　·　总 xG '+match.xg90.toFixed(2)));
+  box.append(el('strong','', '每 15 分钟的射门次数'));
+  const bins = el('div','bins');
+  const peak = Math.max(...match.shotsByWindow, 1);
+  match.shotsByWindow.forEach((count,i) => {
+    const col=el('div','col'), bar=el('span','bar');
+    bar.style.height = (count/peak*44)+'px';
+    col.append(el('span','',String(count)),bar,el('span','',windows[i]));
+    bins.append(col);
+  });
+  box.append(bins, el('p','meta','半场补时并入对应半场最后一栏。'+(match.extraShots?'加时另有 '+match.extraShots+' 次射门。':'')));
+  if (match.chain) box.append(el('p','',match.chain));
+  const link = el('a','source','查看本场事件记录 ↗');
+  link.href=match.source; link.target='_blank'; link.rel='noreferrer'; box.append(link);
+  return box;
+}
+for (const match of matches) {
+  const card = el('article','match');
+  const date = el('div','dates',match.date+'　·　'+match.stage);
+  const title = el('h3');
+  title.append(match.home,el('span','versus','vs'),match.away);
+  const actions=el('div','actions'), toggle=el('button','btn','揭晓数据');
+  toggle.type='button';
+  const target=el('div'); target.id='match-'+match.id;
+  toggle.setAttribute('aria-controls',target.id); toggle.setAttribute('aria-expanded','false');
+  toggle.addEventListener('click',() => {
+    const open=toggle.getAttribute('aria-expanded')==='false';
+    target.replaceChildren();
+    if(open) target.append(buildDetail(match));
+    toggle.setAttribute('aria-expanded',String(open)); toggle.textContent=open?'收起数据':'揭晓数据';
+  });
+  const label=el('label','pick','我的判断'), select=el('select');
+  select.setAttribute('aria-label',match.home+' 对 '+match.away+'，我的判断');
+  select.add(new Option('待评价',''));
+  for(const choice of choices) select.add(new Option(choice,choice));
+  const key='rate90:watch-choice:'+match.id;
+  try { const prior=localStorage.getItem(key); if(choices.includes(prior)) select.value=prior; } catch {}
+  select.addEventListener('change',() => { try { if(select.value) localStorage.setItem(key,select.value); else localStorage.removeItem(key); } catch {} });
+  label.append(select); actions.append(toggle,label); card.append(date,title,actions,target);
+  document.getElementById('matches').append(card);
+}
+</script></body></html>

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0c1224">
+  <meta name="description" content="Rate90 足球回看指南。隐藏比分，按赛事、比赛日和回看建议选择比赛。">
+  <meta property="og:title" content="Rate90 · 无剧透足球回看指南">
+  <meta property="og:description" content="挑一场值得回看的比赛，比分由你揭晓。">
+  <title>Rate90 · 无剧透足球回看指南</title>
+  <link rel="icon" href="./ui/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./ui/site.css">
+</head>
+<body>
+  <a class="skip" href="#content">跳到比赛内容</a>
+  <div class="layout">
+    <aside class="rail shell" aria-label="赛事切换">
+      <a class="mark" href="./index.html" title="Rate90 首页" aria-label="Rate90 首页">R<span>90</span></a>
+      <div class="rail-line"></div><div id="leagues"></div>
+    </aside>
+    <div id="mobile-highlights" class="mobile-highlights"></div>
+    <main id="content" class="content shell">
+      <header class="mast">
+        <div class="mast-label"><span class="wordmark">RATE<span>90</span></span><i></i><span>足球回看指南</span></div>
+        <h1 id="page-title">昨夜比赛</h1><p id="subtitle">欧冠与欧洲五大联赛 · 无剧透回看推荐</p>
+        <div class="toolbar" id="toolbar"></div>
+      </header>
+      <section id="view" aria-label="比赛内容"><p class="notice">正在读取比赛…</p></section>
+      <footer><span class="keyboard"><kbd>←</kbd> <kbd>→</kbd> 切换轮次或日期　 <kbd>Ctrl K</kbd> 搜索</span><button type="button" data-act="about">关于 Rate90</button></footer>
+    </main>
+    <aside class="right shell" aria-label="导航与精选比赛"><section class="side-panel"><h2>导航</h2><nav id="nav"></nav></section><section class="side-panel" id="side-picks"></section><section class="side-panel" id="side-context"></section></aside>
+  </div>
+  <button class="mobile-nav" type="button" data-act="navigation"><span>页面导航</span><span id="mobile-view"></span></button>
+  <dialog id="overlay"><div class="dialog-body" id="dialog-body"></div></dialog>
+  <div id="notice" role="status" class="sr"></div>
+  <script defer src="./ui/catalog.js"></script>
+  <script defer src="./ui/components.js"></script>
+  <script defer src="./ui/views.js"></script>
+  <script defer src="./ui/app.js"></script>
+</body>
+</html>

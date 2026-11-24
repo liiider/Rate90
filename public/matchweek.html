@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>中文比赛周 · Rate90</title></head>
+<body><a href="./index.html">打开 Rate90</a><script>
+const entry=new URL('./index.html',location.href);
+if(location.protocol==='file:')entry.hash='view=round&league=pl';
+else entry.search='view=round&league=pl';
+location.replace(entry.href);
+</script></body></html>
