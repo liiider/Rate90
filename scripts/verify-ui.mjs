@@ -39,7 +39,7 @@ async function openApp(t, url, stored = {}, now = null) {
         throw new Error('Unexpected resource ' + address);
       }
       loaded.push(file.href.slice(publicRoot.href.length));
-      return readFile(file);
+      return super.fetch(file.href);
     }
   }
   const console = new VirtualConsole();
@@ -290,7 +290,10 @@ test('one round picker selects upcoming and historical fixtures and survives sco
     picker().value=value;
     picker().dispatchEvent(new window.Event('change',{bubbles:true}));
   };
-  assert.deepEqual([...picker().options].slice(0,3).map(o=>o.textContent),['全部轮次','下一轮','下下轮']);
+  await until(()=>[...picker().options].some(o=>o.value==='next' && /12/.test(o.textContent)),'Upcoming round labels did not load');
+  assert.equal(picker().options[0].textContent,'全部轮次');
+  assert.equal(picker().querySelector('option[value="next"]').textContent,'第 12 轮');
+  assert.equal(picker().querySelector('option[value="following"]').textContent,'第 13 轮');
   assert.equal(document.querySelector('.watch-mode,[data-act="future"],[data-act="historyView"]'),null);
   select('next');
   await until(()=>document.querySelector('.preview-row'),'Future schedule did not load');

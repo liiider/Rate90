@@ -549,12 +549,12 @@ svg {
   align-items: center;
 }
 
-/* Unified Segmented Round Stepper Pill */
+/* Unified Segmented Round Stepper Pill (Prominent Prev/Next Buttons) */
 .round-control {
   display: inline-flex;
   align-items: stretch;
-  height: 34px;
-  border-radius: 10px;
+  height: 38px;
+  border-radius: 11px;
   border: 1px solid var(--border-strong);
   background: var(--surface);
   box-shadow: var(--shadow-xs);
@@ -569,37 +569,38 @@ svg {
 }
 
 .round-nav-btn {
-  width: 28px;
+  width: 38px;
   height: 100%;
   border: 0;
   border-radius: 0;
-  background: transparent;
-  color: var(--ink-2);
+  background: color-mix(in srgb, var(--surface-subtle) 65%, var(--surface));
+  color: var(--ink);
   display: inline-grid;
   place-items: center;
   transition: color 0.14s ease, background-color 0.14s ease;
 }
 
 .round-nav-btn:first-child {
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--border-strong);
 }
 
 .round-nav-btn:last-child {
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--border-strong);
 }
 
 .round-nav-btn .ico {
-  width: 13px;
-  height: 13px;
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.15;
 }
 
 .round-nav-btn:hover:not(:disabled) {
-  background: var(--surface-subtle);
+  background: var(--brand-soft);
   color: var(--brand);
 }
 
 .round-nav-btn:active:not(:disabled) {
-  background: var(--brand-soft);
+  background: color-mix(in srgb, var(--brand) 22%, transparent);
 }
 
 .round-control select.date-input {
@@ -609,9 +610,9 @@ svg {
   border-radius: 0;
   box-shadow: none;
   background-color: transparent;
-  padding: 0 24px 0 10px;
-  font-size: 12.5px;
-  line-height: 32px;
+  padding: 0 24px 0 11px;
+  font-size: 13px;
+  line-height: 36px;
   text-overflow: ellipsis;
   background-position: right 8px center;
   background-size: 13px;
@@ -643,10 +644,10 @@ svg {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 34px;
-  min-width: 118px;
-  padding: 0 11px;
-  font-size: 12.5px;
+  height: 38px;
+  min-width: 120px;
+  padding: 0 12px;
+  font-size: 13px;
 }
 
 .date-trigger .ico {
@@ -769,6 +770,19 @@ svg {
   border-color: var(--brand-border);
 }
 
+.cal-day.is-future {
+  color: #4F46E5;
+  font-weight: 700;
+  background: rgba(79, 70, 229, 0.08);
+  border-color: rgba(79, 70, 229, 0.22);
+}
+
+:root[data-theme="dark"] .cal-day.is-future {
+  color: #A5B4FC;
+  background: rgba(129, 140, 248, 0.13);
+  border-color: rgba(129, 140, 248, 0.30);
+}
+
 .cal-day.is-selected {
   background: var(--brand);
   border-color: var(--brand);
@@ -817,6 +831,8 @@ svg {
 
 .cal-swatch.high { background: var(--brand); }
 .cal-swatch.rated { background: var(--ink-2); }
+.cal-swatch.future { background: #6366F1; }
+:root[data-theme="dark"] .cal-swatch.future { background: #818CF8; }
 .cal-swatch.sched { background: var(--ink-3); opacity: 0.6; }
 
 .cal-clear {
@@ -831,13 +847,13 @@ svg {
 }
 
 .date-input {
-  height: 34px;
-  padding: 0 11px;
-  border-radius: 10px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 11px;
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 660;
   font-variant-numeric: tabular-nums;
   box-shadow: var(--shadow-xs);
@@ -3379,13 +3395,394 @@ dialog[data-view="details"] .dialog-inner {
   }
 }
 
-.preview-round,.preview-picks h2{margin:0;font-size:1.12rem}
-.preview-round,.preview-picks{margin:1rem 0}
-.preview-picks p{margin:.25rem 0 .8rem}
-.preview-picks h2{margin-bottom:.65rem}
-.preview-row{padding:.85rem .3rem;border-bottom:1px solid color-mix(in srgb,currentColor 16%,transparent);display:grid;grid-template-columns:1fr 2fr auto;align-items:center;gap:1rem}
-.preview-meta,.preview-sides,.preview-sides span{display:flex;align-items:center;gap:.45rem;min-width:0}
-.preview-meta,.preview-row time,.preview-sides small{font-size:.82rem;opacity:.72}
-.preview-meta img,.preview-meta svg,.preview-sides img,.preview-sides svg{width:1.5rem;height:1.5rem;object-fit:contain}
-.preview-sides{gap:.75rem;font-weight:650}
-@media(max-width:680px){.preview-row{grid-template-columns:minmax(0,1fr) auto;gap:.4rem}.preview-sides{grid-column:1/-1;grid-row:2}.preview-row time{grid-column:2;grid-row:1}}
+/* ─── Upcoming Rounds & AI Prematch Picks (Midnight Starry Indigo + Cool Platinum) ─── */
+.dock-badge-future {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: rgba(79, 70, 229, 0.09);
+  border: 1px solid rgba(79, 70, 229, 0.24);
+  color: #4338CA;
+  font: 700 11.5px/1 var(--font-sans);
+  letter-spacing: 0.02em;
+  vertical-align: 2px;
+}
+
+:root[data-theme="dark"] .dock-badge-future {
+  background: rgba(129, 140, 248, 0.14);
+  border-color: rgba(129, 140, 248, 0.32);
+  color: #C7D2FE;
+}
+
+.preview-group + .preview-group {
+  margin-top: 32px;
+}
+
+/* AI Prematch Spotlight Section */
+.preview-picks {
+  margin: 0 0 14px;
+}
+
+.picks-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+}
+
+.picks-spark {
+  font-size: 13px;
+  line-height: 1;
+  color: #4F46E5;
+}
+
+:root[data-theme="dark"] .picks-spark {
+  color: #A5B4FC;
+}
+
+.picks-head h2 {
+  margin: 0;
+  font: 780 14px/1.2 var(--font-display);
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.picks-sub {
+  margin-left: 2px;
+  font-size: 11.5px;
+  font-weight: 540;
+  color: var(--ink-3);
+}
+
+.picks-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 11px;
+}
+
+.picks-grid.is-single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pick-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 17px;
+  overflow: hidden;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.18s ease, box-shadow 0.2s ease;
+}
+
+/* Primary Pick: Twilight / Midnight Starry Indigo Poster */
+.pick-card.is-primary {
+  background: linear-gradient(128deg, #0D1530 0%, #172756 50%, #233B7D 86%, #142147 100%);
+  border: 1px solid rgba(165, 180, 252, 0.38);
+  color: #F8FAFC;
+  box-shadow: 0 8px 20px -6px rgba(15, 23, 62, 0.36), inset 0 1px 0 rgba(224, 231, 255, 0.32);
+}
+
+.pick-card.is-primary::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(129, 140, 248, 0.90) 30%, rgba(224, 231, 255, 0.95) 54%, rgba(56, 189, 248, 0.78) 76%, transparent);
+  pointer-events: none;
+}
+
+:root[data-theme="dark"] .pick-card.is-primary {
+  background: linear-gradient(128deg, #0B1126 0%, #142149 52%, #1E326C 86%, #111A3B 100%);
+  border-color: rgba(165, 180, 252, 0.34);
+  box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.72), 0 2px 8px -2px rgba(79, 70, 229, 0.26), inset 0 1px 0 rgba(224, 231, 255, 0.26);
+}
+
+.pick-glow {
+  background:
+    radial-gradient(ellipse 56% 125% at 88% 8%, rgba(129, 140, 248, 0.34), transparent 64%),
+    radial-gradient(ellipse 44% 100% at 8% 100%, rgba(56, 189, 248, 0.22), transparent 62%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 220' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23E0E7FF' stop-opacity='0.14'/%3E%3Cstop offset='1' stop-color='%23E0E7FF' stop-opacity='0'/%3E%3C/linearGradient%3E%3ClinearGradient id='b' x1='1' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%237DD3FC' stop-opacity='0.11'/%3E%3Cstop offset='1' stop-color='%237DD3FC' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpolygon points='390,0 495,0 410,220 305,220' fill='url(%23a)'/%3E%3Cpolygon points='512,0 554,0 469,220 427,220' fill='url(%23b)'/%3E%3Cpath d='M-20 198 Q 220 40 620 156' fill='none' stroke='%23E0E7FF' stroke-opacity='0.14' stroke-width='1'/%3E%3Cg fill='%23C7D2FE'%3E%3Ccircle cx='540' cy='24' r='1.3' opacity='0.24'/%3E%3Ccircle cx='556' cy='24' r='1.3' opacity='0.20'/%3E%3Ccircle cx='572' cy='24' r='1.3' opacity='0.16'/%3E%3Ccircle cx='532' cy='38' r='1.2' opacity='0.18'/%3E%3Ccircle cx='548' cy='38' r='1.2' opacity='0.18'/%3E%3Ccircle cx='564' cy='38' r='1.2' opacity='0.14'/%3E%3Ccircle cx='524' cy='52' r='1.1' opacity='0.12'/%3E%3Ccircle cx='540' cy='52' r='1.1' opacity='0.13'/%3E%3C/g%3E%3C/svg%3E") center / cover no-repeat;
+}
+
+/* Secondary Pick: Refined Cool-Indigo Wireframe Card */
+.pick-card.is-secondary {
+  background: linear-gradient(130deg, #FFFFFF 0%, #F4F6FF 100%);
+  border: 1.5px solid rgba(99, 102, 241, 0.32);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .pick-card.is-secondary {
+  background: linear-gradient(130deg, #0E1019 0%, #14192A 100%);
+  border-color: rgba(129, 140, 248, 0.34);
+}
+
+.pick-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pick-rank {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.03em;
+  background: rgba(79, 70, 229, 0.10);
+  color: #4338CA;
+}
+
+:root[data-theme="dark"] .pick-rank {
+  background: rgba(129, 140, 248, 0.16);
+  color: #C7D2FE;
+}
+
+.pick-rank.is-primary {
+  background: linear-gradient(135deg, #E0E7FF 0%, #C7D2FE 100%);
+  color: #1E1B4B;
+  box-shadow: 0 2px 10px rgba(129, 140, 248, 0.35);
+}
+
+.pick-time {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-3);
+}
+
+.pick-card.is-primary .pick-time {
+  color: rgba(224, 231, 255, 0.80);
+}
+
+.pick-matchup {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.pick-matchup .side {
+  gap: 9px;
+}
+
+.pick-card.is-primary .team-name {
+  font-size: 16.5px;
+  font-weight: 820;
+  color: #FFFFFF;
+  text-shadow: 0 2px 10px rgba(7, 15, 42, 0.32);
+}
+
+.pick-card.is-primary .vs {
+  color: rgba(224, 231, 255, 0.62);
+}
+
+.pick-card.is-primary .crest.has-img img {
+  filter: drop-shadow(0 5px 14px rgba(5, 10, 32, 0.45)) drop-shadow(0 0 1px rgba(255, 255, 255, 0.32));
+}
+
+.pick-card.is-secondary .team-name {
+  font-size: 15px;
+  font-weight: 740;
+}
+
+.pick-reason {
+  position: relative;
+  margin: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  line-height: 1.62;
+  color: var(--ink-2);
+}
+
+.pick-card.is-primary .pick-reason {
+  border-top-color: rgba(224, 231, 255, 0.16);
+  color: rgba(241, 245, 249, 0.88);
+}
+
+/* Symmetric Upcoming Fixture Rows (Aligned with Rated Match Cards) */
+.preview-row {
+  position: relative;
+  width: 100%;
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 144px minmax(0, 1fr) 24px minmax(0, 1fr) 86px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface) 84%, var(--bg));
+  border: 1px solid var(--border);
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.preview-row:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.preview-row.is-pick-primary {
+  border-color: rgba(99, 102, 241, 0.42);
+  background: linear-gradient(120deg, var(--surface) 0%, rgba(99, 102, 241, 0.055) 100%);
+}
+
+:root[data-theme="dark"] .preview-row.is-pick-primary {
+  border-color: rgba(129, 140, 248, 0.42);
+  background: linear-gradient(120deg, #10121C 0%, #151B30 100%);
+}
+
+.preview-row.is-pick-secondary {
+  border-color: rgba(99, 102, 241, 0.24);
+}
+
+:root[data-theme="dark"] .preview-row.is-pick-secondary {
+  border-color: rgba(129, 140, 248, 0.24);
+}
+
+.preview-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.time-tbd {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  vertical-align: 0.5px;
+}
+
+.pick-card.is-primary .time-tbd {
+  background: rgba(255, 255, 255, 0.14);
+  color: rgba(224, 231, 255, 0.88);
+}
+
+.preview-status {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.preview-pick-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 720;
+  background: rgba(79, 70, 229, 0.09);
+  border: 1px solid rgba(79, 70, 229, 0.24);
+  color: #4338CA;
+}
+
+.preview-pick-badge.is-primary {
+  background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%);
+  border-color: transparent;
+  color: #FFFFFF;
+}
+
+:root[data-theme="dark"] .preview-pick-badge {
+  background: rgba(129, 140, 248, 0.13);
+  border-color: rgba(129, 140, 248, 0.30);
+  color: #C7D2FE;
+}
+
+:root[data-theme="dark"] .preview-pick-badge.is-primary {
+  background: linear-gradient(135deg, #E0E7FF 0%, #A5B4FC 100%);
+  border-color: transparent;
+  color: #1E1B4B;
+}
+
+.preview-leg {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.preview-upcoming-tag {
+  font-size: 11.5px;
+  font-weight: 560;
+  color: var(--ink-3);
+  opacity: 0.72;
+}
+
+@media (max-width: 820px) {
+  .picks-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .pick-card {
+    padding: 14px 15px;
+    border-radius: 15px;
+  }
+
+  .pick-card.is-primary .team-name {
+    font-size: 15px;
+  }
+
+  .preview-row {
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "time status"
+      "home home"
+      "away away";
+    gap: 6px 10px;
+    padding: 12px 14px;
+    border-radius: 14px;
+  }
+
+  .preview-time {
+    grid-area: time;
+  }
+
+  .preview-status {
+    grid-area: status;
+  }
+
+  .preview-row .side.home {
+    grid-area: home;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .preview-row .side.home .crest {
+    order: -1;
+  }
+
+  .preview-row .side.away {
+    grid-area: away;
+  }
+
+  .preview-row .vs {
+    display: none;
+  }
+}

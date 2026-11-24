@@ -439,9 +439,10 @@
       if (!cur || next > cur) map.set(m.date, next);
     }
     const feed=state.catalog.prematch;
+    const today=window.Rate90.upcoming.day({kickoff:Date.now()});
     if (feed) for (const g of [...feed.rounds.flatMap(r=>r.games),...(feed.extra||[])]) {
       const date=window.Rate90.upcoming.day(g);
-      if ((league==='all' || league===g.league) && !map.has(date)) map.set(date,1);
+      if ((league==='all' || league===g.league) && !map.has(date)) map.set(date, date > today ? 4 : 1);
     }
     return map;
   }
@@ -456,6 +457,7 @@
   function renderCalendar(year, month) {
     const pop = $('cal-popover');
     if (!pop || !state.catalog) return;
+    pop.dataset.ym = year + '-' + month;
     const tiers = matchDayTiers(state.route.league);
     const selected = state.route.date;
     const first = new Date(Date.UTC(year, month, 1));
@@ -471,9 +473,9 @@
     for (let d = 1; d <= daysInMonth; d++) {
       const ymd = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
       const tier = tiers.get(ymd) || 0;
-      const cls = ['cal-day', tier === 3 ? 'is-high' : tier === 2 ? 'is-rated' : tier === 1 ? 'is-scheduled' : 'is-rest',
+      const cls = ['cal-day', tier === 4 ? 'is-future' : tier === 3 ? 'is-high' : tier === 2 ? 'is-rated' : tier === 1 ? 'is-scheduled' : 'is-rest',
         ymd === selected ? 'is-selected' : ''].filter(Boolean).join(' ');
-      const title = tier === 3 ? '含 8.0+ 高分比赛' : tier === 2 ? '有已评分比赛' : tier === 1 ? '有赛程，暂无评分' : '无比赛日';
+      const title = tier === 4 ? '未来赛程' : tier === 3 ? '含 8.0+ 高分比赛' : tier === 2 ? '有已评分比赛' : tier === 1 ? '有赛程，暂无评分' : '无比赛日';
       cells.push('<button type="button" class="' + cls + '" data-act="pickDate" data-val="' + ymd + '" title="' + ymd + ' · ' + title + '">' +
         '<span>' + d + '</span>' + (tier ? '<i class="cal-dot" aria-hidden="true"></i>' : '') + '</button>');
     }
@@ -489,7 +491,7 @@
       '<div class="cal-foot">' +
         '<span class="cal-legend"><i class="cal-swatch high"></i>8.0+</span>' +
         '<span class="cal-legend"><i class="cal-swatch rated"></i>已评</span>' +
-        '<span class="cal-legend"><i class="cal-swatch sched"></i>暂无评分</span>' +
+        '<span class="cal-legend"><i class="cal-swatch future"></i>未来</span>' +
         (selected ? '<button type="button" class="cal-clear" data-act="clearDate">清除</button>' : '') +
       '</div>';
   }
@@ -505,6 +507,16 @@
     renderCalendar(y, m - 1);
     pop.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
+    if (state.catalog.prematchFile && !state.catalog.prematch && !state.previewLoading) {
+      state.previewLoading = true;
+      window.Rate90.catalog.loadPrematch(state.catalog.prematchFile).then(data => {
+        state.catalog.prematch = data;
+        if (!pop.hidden && pop.dataset.ym) {
+          const [cy, cm] = pop.dataset.ym.split('-').map(Number);
+          renderCalendar(cy, cm);
+        }
+      }).catch(() => {}).finally(() => { state.previewLoading = false; });
+    }
   }
 
   document.addEventListener('error', ev => {
@@ -656,6 +668,13 @@
     state.catalog = await loadCatalog();
     state.watched = readWatched([]);
     restoreRoute(true);
+    if (state.catalog.prematchFile && !state.catalog.prematch && !state.previewLoading) {
+      state.previewLoading = true;
+      window.Rate90.catalog.loadPrematch(state.catalog.prematchFile).then(data => {
+        state.catalog.prematch = data;
+        render();
+      }).catch(() => {}).finally(() => { state.previewLoading = false; });
+    }
   } catch {
     $('view').innerHTML = '<div class="state-card">比赛数据加载失败，请刷新页面重试。</div>';
   }
