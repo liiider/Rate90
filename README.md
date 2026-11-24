@@ -6,14 +6,22 @@
 
 - **直接使用**　保留整个 `public/` 目录，双击 `public/index.html`。球队图标、评分与详情都随站点提供。
 - **本地服务**　使用 Node.js 22.9 或更高版本，在项目根目录运行 `npm start`，打开 <http://127.0.0.1:3000>。比赛日接口随服务启动。
-- **Vercel 静态部署**　本地采集器将比赛资料写入 SQLite，按 Rate90 规则计算评分，生成 `public/ui/data/` 快照。Vercel 发布 `public/`，入口为 `index.html`。本地更新快照后，重新部署即可更新线上数据。
+- **Vercel 静态部署**　本地采集器将比赛资料写入 SQLite，按 Rate90 规则计算评分，生成 `public/ui/data/` 快照。Vercel 发布 `public/`，入口为 `index.html`。家用采集器生成新快照后，发布服务会推送到 GitHub 的 `main`，由 Vercel 更新正式站。
 - **制作交付包**　用 Python 3 运行 `python3 scripts/package-static.py`（Windows 可用 `py -3 scripts/package-static.py`），生成 `dist/Rate90-static.zip`。解压后直接打开 `index.html`。
 
 ## 发布到 Vercel
 
 在项目根目录运行 `npx vercel` 创建预览，首次按提示登录并关联 Rate90 项目。项目根目录选当前目录，仓库里的 `vercel.json` 指定静态输出为 `public/`。预览通过后运行 `npx vercel --prod` 发布正式站。
 
-## 在本机部署采集器（macOS）
+## 家用 Linux 自动采集与发布
+
+在 Mac 项目目录双击 `dist/deploy-home-collector.command`。从仓库检出的同一入口在 `deploy/deploy-home-collector.command`。首次安装使用项目的 BSD 密钥与已有赛季数据库，自动检查 Linux 架构、Node.js 和后台运行方式。服务器生成本仓库专用的 SSH 发布密钥。Mac 上已授权的 GitHub CLI 会登记公钥，也可以按窗口提示在仓库的 Deploy keys 页面勾选 **Allow write access**。成功时显示 `RATE90_PUBLISHER_ACTIVE`。
+
+每次采集完成，发布服务读取新索引，将它与引用的比赛日详情、预览作为一次提交推送。后台每 5 秒检查一次文件变化；推送失败后 1 分钟重试。正式域名返回相同索引后记录 `RATE90_LIVE`。如 Vercel 持续返回旧索引，20 分钟后重新触发部署并逐步延长重试间隔。
+
+Linux 使用 systemd 用户服务时，运行 `journalctl --user -u rate90-publish -n 30 --no-pager` 查看发布记录。使用 cron 时，日志位于 `~/.local/share/rate90-publish/publish.log`。
+
+## 单独在 macOS 运行采集器
 
 在项目根目录的 `.env.local` 配置 `BSD_API_TOKEN`，运行 `npm run collect:install`。采集器随后在当前 Mac 用户登录时自动运行，复用 `data/collector/rate90.sqlite`，更新 `public/ui/data/`。将新数据发布到线上时，在项目根目录重新运行 `npx vercel --prod`。
 

@@ -1,0 +1,111 @@
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+module = importlib.util.spec_from_file_location('publisher', Path(__file__).with_name('publish-home.py'))
+pub = importlib.util.module_from_spec(module)
+module.loader.exec_module(pub)
+
+
+def cmd(*args, cwd=None):
+    return subprocess.check_output(['git', *args], cwd=cwd, stderr=subprocess.PIPE).decode().strip()
+
+
+class PublicationTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.app = self.root / 'app'
+        self.app.mkdir()
+        self.remote = self.root / 'remote.git'
+        cmd('init', '-q', '--bare', '-b', 'main', str(self.remote))
+        cmd('init', '-q', '-b', 'main', str(self.app))
+        cmd('config', 'user.email', 'test@example.invalid', cwd=self.app)
+        cmd('config', 'user.name', 'test', cwd=self.app)
+        (self.app / 'README').write_text('keep')
+        cmd('add', 'README', cwd=self.app)
+        cmd('commit', '-qm', 'Initial site', cwd=self.app)
+        cmd('push', '-q', str(self.remote), 'main', cwd=self.app)
+        self.state = self.root / 'state'
+        self.state.mkdir()
+        self.publisher = pub.Publisher(self.app, self.state, self.remote.as_uri())
+        self.live = ''
+        self.publisher.online = lambda digest: digest == self.live
+        self.data = self.app / pub.ASSET
+        (self.data / 'collected').mkdir(parents=True)
+        self.stem = 'collected/2026-11-23-' + '1' * 20
+        self.write(1)
+        (self.data / (self.stem+'.js')).write_text('day detail')
+        (self.data / (self.stem+'-preview.js')).write_text('day preview')
+        (self.app / '.env.local').write_text('private')
+        (self.data / 'collected/stale.js').write_text('unused')
+        self.head = lambda: cmd('--git-dir', str(self.remote), 'rev-parse', 'main')
+
+    def write(self, generation):
+        index = dict(ruleVersion='1', updatedAt=f'2026-11-{generation:02}T00:00:00Z',
+                     fixtures=[{'id':'1'}], days={'2026-11-23':dict(file=self.stem, previewFile=self.stem+'-preview')})
+        raw = pub.PREFIX + json.dumps(index).encode() + b';\n'
+        (self.data/pub.INDEX).write_bytes(raw)
+        return pub.git_blob(raw)
+
+    def test_atomic_push_receipt_and_retry(self):
+        self.publisher.check_access()
+        old = self.head()
+        self.assertFalse(self.publisher.deploy())
+        published = self.head()
+        self.assertNotEqual(old, published)
+        tree = cmd('--git-dir', str(self.remote), 'ls-tree', '-r', '--name-only', 'main').splitlines()
+        self.assertEqual(set(tree), {'README', pub.ASSET+pub.INDEX, pub.ASSET+self.stem+'.js',
+                                      pub.ASSET+self.stem+'-preview.js'})
+        self.assertFalse(self.publisher.deploy())
+        self.assertEqual(self.head(), published)
+        receipt = json.loads(self.publisher.receipt.read_text())
+        self.publisher.record({**receipt, 'retryAfter': 0})
+        self.assertFalse(self.publisher.deploy())
+        retried = self.head()
+        self.assertNotEqual(retried, published)
+        self.live = self.write(1)
+        self.assertTrue(self.publisher.deploy())
+        self.assertEqual(self.head(), retried)
+        self.publisher.online = lambda _: self.fail('unchanged snapshot contacted production')
+        self.assertTrue(self.publisher.deploy())
+
+    def test_missing_data_and_stale_seed_do_not_replace_main(self):
+        self.write(3)
+        self.publisher.deploy()
+        head = self.head()
+        self.write(2)
+        with self.assertRaises(ValueError):
+            self.publisher.deploy()
+        self.write(4)
+        (self.data/(self.stem+'.js')).unlink()
+        with self.assertRaises(FileNotFoundError):
+            self.publisher.deploy()
+        self.assertEqual(self.head(), head)
+        (self.data/(self.stem+'.js')).write_text('day detail')
+        self.publisher.deploy()
+        self.assertNotEqual(self.head(), head)
+
+    def test_non_fast_forward_keeps_the_other_commit_and_retries(self):
+        old = self.head()
+        original = self.publisher.git
+        def race(*args, **kwargs):
+            if args[0] == 'push' and self.head() == old:
+                (self.app/'README').write_text('concurrent edit')
+                cmd('commit', '-qam', 'Concurrent change', cwd=self.app)
+                cmd('push', '-q', str(self.remote), 'main', cwd=self.app)
+            return original(*args, **kwargs)
+        self.publisher.git = race
+        with self.assertRaises(RuntimeError):
+            self.publisher.deploy()
+        self.assertFalse(self.publisher.receipt.exists())
+        self.assertFalse(self.publisher.deploy())
+        self.assertEqual(cmd('--git-dir', str(self.remote), 'show', 'main:README'), 'concurrent edit')
+
+
+if __name__ == '__main__':
+    unittest.main()
