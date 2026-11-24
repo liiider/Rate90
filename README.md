@@ -6,7 +6,7 @@ Rate90 帮你在知道比分之前挑一场值得回看的足球比赛。可以�
 
 - **赛前选场**。可按北京时间查看某天的对阵，也可在轮次选择器里查看未来两个完整轮次。单项赛事显示实际轮名，全部赛事按联赛分组。
 - **AI 推荐**。Linux 采集器调用 OpenAI `gpt-6.2-sol`，结合两队同赛事近六场的射门、机会分布和可用的赛前资料，每组选择零至两场并给出理由。前端从静态快照展示「强烈推荐」「值得一看」，并区分已评估但无推荐和等待评估。
-- **赛后回看**。评分规则升级至 `rate90-1.2.0`，增加「值得看集锦」标签。阵容可直接查看，比赛统计和事件在确认后展开。
+- **赛后回看**。评分规则升级至 `rate90-1.2.0`，增加「值得看集锦」标签。首发和替补按主客队分栏展示。确认展开后可并排比较技术统计，按分钟查看换人和出牌。
 - **数据更新**。采集端支持增量归档、从 SQLite 重建展示快照，并将赛前评估随比赛日索引一起发布。
 
 [GitHub Release](https://github.com/liiider/Rate90/releases/tag/v0.2.0)
@@ -59,7 +59,14 @@ npm start
 
 模型为 `gpt-6.2-sol`，通过 OpenAI Responses API 调用。启用时，在采集端已有的 `.env.local` 中添加 `RATE90_AI_KEY=<OpenAI 项目密钥>`，保留原有的 `BSD_API_TOKEN`。默认地址为 `https://api.openai.com/v1`，也支持环境变量 `OPENAI_API_KEY`。使用兼容网关时，可用 `RATE90_AI_BASE_URL` 指定包含版本号的 API 根地址。
 
-Linux 上已运行 systemd 用户采集服务时，可在仓库根目录运行 `python3 deploy/configure-openai.py`，按提示输入密钥。工具使用当前模型验证一次真实请求，成功后保存配置、重启服务并等候新评估。手动编辑配置时，运行 `systemctl --user restart rate90-collector.service` 载入设置。
+Linux 上已运行 systemd 用户采集服务时，可在仓库根目录运行 `python3 deploy/configure-openai.py`，按提示输入密钥。工具先验证网络，再向模型发送一次请求，成功后保存配置、重启服务并等候新评估。手动编辑配置时，运行 `systemctl --user restart rate90-collector.service` 载入设置。
+
+如果只有 Docker 桥接网络能访问 OpenAI，可选用独立的 Rate90 容器转发 TLS 流量。将下面的 `existing-container` 替换为已验证能连接 OpenAI 的容器名。工具复用其本地镜像（需包含 Python 3.8+ 和 curl）及桥接网络，密钥仍由宿主机上的 Node 读取。
+
+```sh
+socket=$(python3 deploy/openai-network.py existing-container) &&
+  python3 deploy/configure-openai.py --socket "$socket"
+```
 
 用 `journalctl --user -u rate90-collector.service -f` 查看采集日志。`prematch.picks` 统计已有评估的比赛分组数，每组可以推荐零场。静态站从索引的 `prematchFile` 加载已发布的结果，浏览页面不会触发模型调用。
 

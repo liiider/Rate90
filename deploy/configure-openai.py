@@ -13,6 +13,8 @@ from pathlib import Path
 parser = argparse.ArgumentParser(description="在 Linux systemd 采集服务启用 OpenAI 赛前推荐")
 parser.add_argument("--app", type=Path, default=Path.cwd())
 parser.add_argument("--worker", type=Path, help=argparse.SUPPRESS)
+parser.add_argument("--socket", type=Path, help="通过指定的本机 Unix 套接字连接 OpenAI")
+parser.add_argument("--ai-module", type=Path, help=argparse.SUPPRESS)
 args = parser.parse_args()
 app = args.app.resolve()
 os.chdir(app)
@@ -27,6 +29,15 @@ pid = subprocess.check_output(["systemctl", "--user", "show", "-p", "MainPID", "
 node = os.readlink("/proc/" + pid + "/exe")
 if Path(node).name != "node":
     sys.exit("采集服务的运行进程不是 Node.js。")
+active_module = app / "server/prematch-ai.mjs"
+source_module = args.ai_module.resolve() if args.ai_module else active_module
+candidate_code = source_module.read_bytes()
+previous_code = active_module.read_bytes()
+if args.ai_module and previous_code != candidate_code and hashlib.sha256(previous_code).hexdigest() != "848fa03d545d15b0cd4a42d7a4e13a7cfc248a8d584863f8761424f24c4a6694":
+    sys.exit("服务器已有不同版本的 AI 模块，已保留。")
+socket_path = str(args.socket.resolve()) if args.socket else ""
+if args.socket and (not args.socket.is_socket() or not re.fullmatch(r"[\w./-]+", socket_path)):
+    sys.exit("OpenAI 网络套接字路径无效。")
 network_env = {}
 network_names = {"PATH", "HOME", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
                  "NODE_USE_ENV_PROXY", "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR"}
@@ -34,7 +45,11 @@ for field in Path("/proc", pid, "environ").read_bytes().split(b"\0"):
     name, sep, value = field.partition(b"=")
     if sep and os.fsdecode(name).upper() in network_names:
         network_env[os.fsdecode(name)] = os.fsdecode(value)
+network_env["RATE90_PROBE_MODULE"] = source_module.as_uri()
+network_env["RATE90_OPENAI_SOCKET"] = socket_path
 diagnostics = """
+const {openaiRequest, aiSettings, selectGames} = await import(process.env.RATE90_PROBE_MODULE);
+const request = (url, options) => openaiRequest(url, options, process.env.RATE90_OPENAI_SOCKET);
 const symbol = value => /^[A-Za-z0-9_.-]{1,80}$/.test(value ?? '') ? value : '';
 function report(error) {
   const cause = error.cause ?? error;
@@ -50,7 +65,7 @@ async function httpError(response) {
 """
 network_probe = diagnostics + """
 try {
-  const r = await fetch('https://api.openai.com/v1/models', {redirect:'error', signal:AbortSignal.timeout(17000)});
+  const r = await request('https://api.openai.com/v1/models', {redirect:'error', signal:AbortSignal.timeout(17000)});
   if (r.status !== 401 && !r.ok) { await httpError(r); process.exitCode = 1; }
   else console.log('OpenAI 官方接口已连接（HTTP ' + r.status + '）。');
 } catch (e) { report(e); process.exitCode = 1; }
@@ -65,14 +80,13 @@ key = getpass.getpass("在 Linux 输入 OpenAI API Key（输入时隐藏）: ").
 if not re.fullmatch(r"[A-Za-z0-9_.-]+", key):
     sys.exit("密钥为空或含无效字符。")
 url = "https://api.openai.com/v1"
-updates = {"RATE90_AI_KEY":key, "RATE90_AI_BASE_URL":url}
+updates = {"RATE90_AI_KEY":key, "RATE90_AI_BASE_URL":url, "RATE90_OPENAI_SOCKET":socket_path}
 probe = diagnostics + """
-import {aiSettings, selectGames} from './server/prematch-ai.mjs';
 const cfg = aiSettings();
 if (cfg.url.href !== 'https://api.openai.com/v1/responses' || cfg.model !== 'gpt-6.2-sol') process.exit(2);
 try {
   await selectGames(cfg, {games:[], teams:{}}, async (url, options) => {
-    const r = await fetch(url, options);
+    const r = await request(url, options);
     if (!r.ok) await httpError(r);
     else {
       const body = await r.clone().json();
@@ -89,6 +103,17 @@ try {
 print("正在向 OpenAI 验证模型访问权限…", flush=True)
 if not probe_node(probe, {**network_env, **updates}):
     sys.exit("模型验证失败，采集配置尚未写入。")
+if candidate_code != previous_code:
+    with tempfile.NamedTemporaryFile(dir=active_module.parent, suffix=".mjs", delete=False) as out:
+        staged = Path(out.name)
+        out.write(candidate_code)
+    try:
+        subprocess.run([node, "--check", str(staged)], check=True)
+        if active_module.read_bytes() != previous_code:
+            sys.exit("Linux 的 AI 模块刚刚有更新，请重新运行。")
+        os.replace(staged, active_module)
+    finally:
+        staged.unlink(missing_ok=True)
 worker = app / "server/prematch-worker.mjs"
 wanted = "243356003d0dd3abbced9495a7c3f0e4bfd34abd0ac98b2e094f62052714d5db"
 installed = hashlib.sha256(worker.read_bytes()).hexdigest()
@@ -110,7 +135,7 @@ elif args.worker and installed != wanted:
     print("检测到不同版本的采集模块，沿用服务器已有版本。")
 original = env_file.read_text()
 keep = [line for line in original.splitlines(keepends=True)
-        if not re.match(r'^\s*(?:export\s+)?(?:RATE90_AI_KEY|RATE90_AI_BASE_URL)\s*=', line)]
+        if not re.match(r'^\s*(?:export\s+)?(?:RATE90_AI_KEY|RATE90_AI_BASE_URL|RATE90_OPENAI_SOCKET)\s*=', line)]
 with tempfile.NamedTemporaryFile(mode="w", dir=app, delete=False) as out:
     temporary = Path(out.name)
     try:

@@ -411,7 +411,7 @@
 
   dialog.addEventListener('cancel', ev => { ev.preventDefault(); closeModal(); });
   dialog.addEventListener('wheel', ev => {
-    const scroller = ev.target.closest?.('.detail-panel, .modal-list, .dialog-inner');
+    const scroller = ev.target.closest?.('.timeline, .detail-panel, .modal-list, .dialog-inner');
     if (!scroller || scroller.scrollHeight <= scroller.clientHeight + 1) {
       ev.preventDefault();
       return;

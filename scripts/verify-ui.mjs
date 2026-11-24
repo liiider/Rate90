@@ -189,8 +189,8 @@ test('lineups and substitutes are spoiler-free; peek confirmation reveals stats 
   action(overlay,'confirmPeek','stats').click();
   assert.equal(document.activeElement,action(overlay,'detailTab','stats'));
   const statsText = visibleText(overlay.querySelector('[data-panel="stats"]'));
-  for (const value of ['116.6','射门','射正','xG','控球','传中','抢断']) assert.ok(statsText.includes(value),value);
-  assert.doesNotMatch(statsText,/全场比分|乌龙球/);
+  for (const value of ['116.6','射门','射正','控球','传中','抢断']) assert.ok(statsText.includes(value),value);
+  assert.doesNotMatch(statsText,/全场比分|乌龙球|xG|预期进球/);
   const minutes = [...overlay.querySelectorAll('.pressure-chart svg rect title')].map(item => Number.parseInt(item.textContent, 10));
   // The archived provider response for 209642 ends in minute 89.
   assert.deepEqual(minutes, Array.from({length: 89}, (_, i) => i + 1));
