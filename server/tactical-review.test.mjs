@@ -15,7 +15,7 @@ const side=name=>({formation:'4-3-3',players:[{name,position:'F',player_id:name=
 const facts={id:12,league:{id:1},home_team:'A',away_team:'B',event_date:new Date(kickoff).toISOString(),
   home_score:1,away_score:0,lineups:{confirmed:true,home:side('A1'),away:side('B1')},incidents:[
     {minute:55,is_home:true,type:'position_change',player:'A1',new_position:'LW'},
-    {minute:90,added_time:3,is_home:true,type:'goal',home_score:1,away_score:0,player:'A1'}],
+    {minute:90,added_time:3,is_home:true,type:'goal',home_score:1,away_score:0,player:'A1',assist:'A2'}],
   shotmap:[{min:64,home:true,player_id:1,xg:0.25,sit:'regular',pos:{x:16,y:30}}]};
 const base={teams:[],fixtures:[],sample:{matches:[]}};
 function answer(ctx) {
@@ -53,12 +53,29 @@ test('position changes and time ranges require timed evidence; hindsight fields 
   assert.equal(ctx.teams.home.starters[0].rating,undefined);
   assert.deepEqual(ctx.evidence.map(e=>e.time),['55′','64′','90+3′']);
   assert.equal(ctx.evidence[0].position,'LW');
+  assert.equal(ctx.evidence[2].assist,'A2');
   const data=answer(ctx);
   data.nodes[1].to='S2';
   assert.equal(checkedReview(data,ctx).nodes[1].time,'55′–64′');
   assert.throws(()=>checkedReview({...data,side:'away'},ctx));
   data.nodes[1].from='made-up';assert.throws(()=>checkedReview(data,ctx));
 });
+test('publish the observable decision and its trade-off without an evidentiary aside',()=>{
+  const ctx=buildTacticalContext(fixture,facts,'home'), data=answer(ctx);
+  const node=data.nodes[1];
+  node.analysis='对手只完成一脚射门；这些记录不足以证明皇马主动回收了防线。';
+  node.comment='我赞成保留反击的接应点。球队从中路无法推进，边路仍能出球。';
+  const published=checkedReview(data,ctx).nodes[1];
+  assert.equal(published.analysis,'对手只完成一脚射门。');
+  assert.equal(published.comment,node.comment);
+  node.comment='现有记录不能证明压迫高度改变。';
+  assert.throws(()=>checkedReview(data,ctx),/缺少独立/);
+  node.comment='换人记录本身不足以把这个失球归到替补。';
+  assert.throws(()=>checkedReview(data,ctx),/缺少独立/);
+  node.comment=node.analysis;
+  assert.throws(()=>checkedReview(data,ctx),/缺少独立/);
+});
+
 test('manual rollout selects just the six published rounds and leaves unfinished European games for later',()=>{
   const row = {id:'12',league:'pl',round:11,date:'2026-11-22',status:'finished',day:'2026-11-22'};
   const fixtures = [row,...[

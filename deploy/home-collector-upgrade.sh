@@ -74,6 +74,7 @@ recover() {
 trap recover EXIT
 if running; then was_running=true; service_stop; fi
 items=(server scripts package.json REVISION .rate90-release data/bsd-sample.json public/ui/data/fixtures.js public/ui/data/teams.js public/ui/data/process-ratings.js)
+if [[ -f public/ui/data/tactical-edits-20261125.js ]]; then items+=(public/ui/data/tactical-edits-20261125.js); fi
 if [[ -f public/ui/data/collected-index.js ]]; then items+=(public/ui/data/collected-index.js); fi
 tar -cf "$saved.part" "${items[@]}"
 mv "$saved.part" "$saved"
@@ -83,7 +84,11 @@ if [[ -f "$archive_seed" || -f "$stage/CODE_ONLY" ]]; then
 fi
 # The release contains code, the offline archive and its immutable day files only.
 files=(server scripts package.json REVISION)
-if [[ ! -f "$stage/CODE_ONLY" ]]; then files+=(data/bsd-sample.json public); fi
+if [[ -f "$stage/CODE_ONLY" ]]; then
+  files+=(public/ui/data/tactical-edits-20261125.js)
+else
+  files+=(data/bsd-sample.json public)
+fi
 (cd "$stage/release" && tar -cf - "${files[@]}") | tar -xf -
 if [[ -f "$archive_seed" ]]; then
   run_node scripts/collect.mjs --publish-only --import-archive

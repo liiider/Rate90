@@ -6,7 +6,7 @@ Rate90 帮你在知道比分之前挑一场值得回看的足球比赛。可以�
 
 右上角可切换中文和英文，浏览器会记住选择。赛事、球队、阵容、技术统计和比赛动态随之切换。当前 AI 推荐理由和战术复盘正文为中文。
 
-[GitHub Release](https://github.com/liiider/Rate90/releases/tag/v0.2.1)
+[GitHub Release](https://github.com/liiider/Rate90/releases/tag/v0.2.1) · [战术复盘出稿对照](docs/tactical-review-evaluation.md)
 
 ## v0.2.0 更新 · 2026-11-25
 

@@ -5,7 +5,7 @@ import {pathToFileURL} from 'node:url';
 import {DatabaseSync} from 'node:sqlite';
 import {setTimeout as pause} from 'node:timers/promises';
 import {openQueue} from '../server/collector.mjs';
-import {atomicAsset, readAsset} from '../server/collected-feed.mjs';
+import {atomicAsset, editLaunchReview, readAsset} from '../server/collected-feed.mjs';
 import {aiSettings} from '../server/prematch-ai.mjs';
 import {generateTactics} from '../server/tactical-review.mjs';
 
@@ -38,8 +38,10 @@ export async function publishRoundReviews(db, dir, ids) {
       for (const {side,result} of sides) {
         match.details ??= {};
         match.details.tactics ??= {home:null,away:null};
-        if (!match.details.tactics[side]) {
-          match.details.tactics[side] = JSON.parse(result);
+        const current = match.details.tactics[side];
+        const edited = await editLaunchReview(current ?? JSON.parse(result),day);
+        if (current !== edited) {
+          match.details.tactics[side] = edited;
           changedDay = true;
         }
       }

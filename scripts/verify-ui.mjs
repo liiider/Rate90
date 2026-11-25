@@ -168,12 +168,16 @@ test('dates resolve to whole competition rounds and selectors preserve card scor
 });
 
 test('each spoiler tab unlocks separately per match and the tactical panel displays one team', async t => {
+  const oldAnalysis = '3比1后，穆里尼奥在70分钟用卡马文加换下居莱尔，80分钟再用卜拉欣·迪亚斯换下迪奥曼德。两次换人之间，埃因霍温仅有一次被封堵的射门；这些记录不足以证明皇马主动回收了防线。';
   const review = name => ({score:7,nodes:[{time:'终场',analysis:name,comment:'点评'}]});
   const {document} = await openApp(t, home + '?view=date&date=2026-11-21&match=' + mainMatch,{},null,(name,data)=>{
     if (name === 'ui/data/collected-index.js') data.fixtures.find(f=>f.id===mainMatch).tacticalCoverage=true;
     if (!name.startsWith('ui/data/collected/') || name.endsWith('-preview.js')) return;
     const match=data.matches.find(m=>m.id===mainMatch);
-    if (match?.details) match.details.tactics={home:review('主队独立分析'),away:review('客队独立分析')};
+    if (match?.details) {
+      match.details.tactics={home:review('主队独立分析'),away:review('客队独立分析')};
+      match.details.tactics.home.nodes.unshift({time:'70′–80′',analysis:oldAnalysis,comment:'领先时保留向前接应点。'});
+    }
   });
   const overlay = document.querySelector('#overlay');
   await until(() => overlay.querySelectorAll('.starters li').length === 22, 'Expected both complete starting lineups');
@@ -222,6 +226,8 @@ test('each spoiler tab unlocks separately per match and the tactical panel displ
   assert.doesNotMatch(overlay.textContent,/主队独立分析|客队独立分析/);
   action(overlay,'confirmPeek','tactics').click();
   assert.match(overlay.textContent,/主队独立分析/);
+  assert.match(overlay.textContent,/埃因霍温只完成一脚射门/);
+  assert.doesNotMatch(overlay.textContent,/不足以证明/);
   assert.doesNotMatch(overlay.textContent,/客队独立分析/);
   action(overlay,'tacticalSide','away').click();
   assert.match(overlay.textContent,/客队独立分析/);

@@ -3,7 +3,7 @@ import {mkdir, readFile, readdir, stat, unlink, utimes} from 'node:fs/promises';
 import {join} from 'node:path';
 import {beijingDate, LEAGUES, summarize} from './bsd.mjs';
 import {DAY, getMeta} from './collector.mjs';
-import {assetDirectory, atomicAsset, isFinishedFixture, optionalIndex, readAsset} from './collected-feed.mjs';
+import {assetDirectory, atomicAsset, editLaunchReview, isFinishedFixture, optionalIndex, readAsset} from './collected-feed.mjs';
 import {formatFeed, rateMatch, ruleVersion} from './recommend.mjs';
 import {tacticalFixture} from './tactical-review.mjs';
 
@@ -25,7 +25,7 @@ export async function loadBaseline(dir = assetDirectory) {
 
 export async function publishCollected(db,base,dir = assetDirectory) {
   const scans = [...LEAGUES.keys()].map(id => Number(getMeta(db,'calendar:'+id+':at')) || 0);
-  const revision = ['round-reasons-v3-tactics1', ruleVersion, getMeta(db,'revision') ?? '0', ...scans].join('/');
+  const revision = ['round-reasons-v3-tactics2', ruleVersion, getMeta(db,'revision') ?? '0', ...scans].join('/');
   const previous = await optionalIndex(dir,'collected-index');
   if (previous?.revision === revision) return;
   const rows = db.prepare('SELECT id,fixture,facts,fetched_at,observed_at,styles_at,phase FROM games WHERE fixture IS NOT NULL ORDER BY id').all();
@@ -71,7 +71,7 @@ export async function publishCollected(db,base,dir = assetDirectory) {
     } : summary;
     if (tacticalFixture(f)) {
       const tactics={home:null,away:null};
-      for (const entry of reviews.all(row.id)) tactics[entry.side]=JSON.parse(entry.result);
+      for (const entry of reviews.all(row.id)) tactics[entry.side]=await editLaunchReview(JSON.parse(entry.result),day);
       match.matchDetail={...match.matchDetail,tactics};
       fixture.tacticalCoverage=true;
     }

@@ -37,7 +37,7 @@ with tarfile.open(output, 'w:gz', format=tarfile.USTAR_FORMAT) as tar:
                          'github-known-hosts':'github-known-hosts'}.items():
         add(dest, (root/'deploy'/source).read_bytes())
     files = [root/'package.json', root/'scripts/collect.mjs', root/'scripts/pull-bsd-local.mjs',
-             root/'scripts/backfill-tactics-round.mjs']
+             root/'scripts/backfill-tactics-round.mjs', data/'tactical-edits-20261125.js']
     if not code_update:
         files.append(root/'data/bsd-sample.json')
     files += [p for p in (root/'server').glob('*.mjs') if not p.name.endswith('.test.mjs')]

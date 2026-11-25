@@ -34,6 +34,25 @@ export async function optionalIndex(dir,name) {
   catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 
+let launchCopy;
+export async function editLaunchReview(review, day) {
+  if (!review?.nodes?.length || day < '2026-11-21' || day > '2026-11-25') return review;
+  launchCopy ??= readAsset(assetDirectory,'tactical-edits-20261125').catch(error => {
+    launchCopy = null;
+    throw error;
+  });
+  const edits = await launchCopy;
+  let changed = false;
+  const nodes = review.nodes.map(node => {
+    const analysis = Object.hasOwn(edits,node.analysis) ? edits[node.analysis] : node.analysis;
+    const comment = Object.hasOwn(edits,node.comment) ? edits[node.comment] : node.comment;
+    if (analysis === node.analysis && comment === node.comment) return node;
+    changed = true;
+    return {...node,analysis,comment};
+  });
+  return changed ? {...review,nodes} : review;
+}
+
 const idsByLabel = new Map(Object.entries(styleLabels).map(([id,label]) => [label,id]));
 
 function publishedCard(card,details) {
@@ -107,6 +126,13 @@ export async function storedFeed(day,details,dir = assetDirectory) {
   }
   const matches = [...rows.values()].map(card => publishedCard(card,details))
     .sort((a,b) => (b.rating ?? -1)-(a.rating ?? -1) || a.kickoff.localeCompare(b.kickoff) || a.id.localeCompare(b.id));
+  for (const match of matches) {
+    const tactics = match.details?.tactics;
+    if (!tactics) continue;
+    const edited = {...tactics};
+    for (const side of Object.keys(tactics)) edited[side] = await editLaunchReview(tactics[side],day);
+    match.details.tactics = edited;
+  }
   if (matches.length) matches[0].topPick = matches[0].recommendation === '看全场';
   const feeds = [collected,round].filter(Boolean);
   const selected = new Set(rows.values());

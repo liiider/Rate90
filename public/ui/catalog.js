@@ -204,6 +204,29 @@
     return detailSetCache.get(file);
   }
 
+  // Published first-round reviews are immutable. Apply the copy desk's exact
+  // paragraph edits so a later collector snapshot cannot restore the old copy.
+  let tacticalEdits;
+  async function editedLaunchReviews(tactics, date) {
+    if ((!tactics?.home?.nodes?.length && !tactics?.away?.nodes?.length) ||
+        date < '2026-11-21' || date > '2026-11-25') return tactics;
+    tacticalEdits ??= asset('tactical-edits-20261125').catch(() => {
+      tacticalEdits = null;
+      return {};
+    });
+    const edits = await tacticalEdits;
+    const result = {...tactics};
+    for (const side of ['home','away']) {
+      const review = tactics[side];
+      if (!review?.nodes) continue;
+      result[side] = {...review, nodes:review.nodes.map(node => ({...node,
+        analysis:Object.hasOwn(edits,node.analysis) ? edits[node.analysis] : node.analysis,
+        comment:Object.hasOwn(edits,node.comment) ? edits[node.comment] : node.comment
+      }))};
+    }
+    return result;
+  }
+
   async function loadMatchDetails(matchId) {
     const {byId, detailFiles, tacticalFiles} = await (catalogPending ?? loadCatalog());
     const match = byId.get(String(matchId));
@@ -211,7 +234,7 @@
     if (!file) return null;
     const [cards, tacticalCards] = await Promise.all([detailsIn(file),detailsIn(tacticalFiles.get(match.id) || file)]);
     const detail = cards.get(match.id);
-    const tactics = tacticalCards.get(match.id)?.tactics;
+    const tactics = await editedLaunchReviews(tacticalCards.get(match.id)?.tactics, match.date);
     if (!detail && !tactics) return null;
     const {lineups, stats, pressure, events} = detail || {};
     return lineups || stats || pressure || events || tactics ? {lineups, stats, pressure, events, tactics} : null;
