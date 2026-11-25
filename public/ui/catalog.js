@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  window.Rate90 = {};
+  window.Rate90 = window.Rate90 || {};
 
   const leagues = {
     cl: { name: '欧洲冠军联赛', short: '欧冠', region: '欧洲', image: 'cl.svg', round: 4 },
@@ -178,6 +178,22 @@
   }
 
   const detailSetCache = new Map();
+  let playersZhPending = null;
+
+  function loadPlayersZh() {
+    if (!playersZhPending) {
+      playersZhPending = asset('players-zh')
+        .then(map => {
+          window.Rate90?.i18n?.registerPlayers?.(map);
+          return true;
+        })
+        .catch(() => {
+          playersZhPending = null;
+          return false;
+        });
+    }
+    return playersZhPending;
+  }
 
   function detailsIn(file) {
     if (!detailSetCache.has(file)) {
@@ -217,6 +233,7 @@
   }
 
   function cnDate(date) {
+    if (window.Rate90?.i18n) return window.Rate90.i18n.formatDate(date);
     if (!date || date.length < 10) return date || '';
     const m = Number(date.slice(5, 7));
     const d = Number(date.slice(8, 10));
@@ -224,6 +241,7 @@
   }
 
   function dateSpan(matches) {
+    if (window.Rate90?.i18n) return window.Rate90.i18n.formatSpan(matches);
     const dates = matches.map(m => m.date).filter(Boolean).sort();
     if (!dates.length) return '';
     const first = cnDate(dates[0]);
@@ -254,6 +272,7 @@
   }
 
   function roundName(league, round) {
+    if (window.Rate90?.i18n) return window.Rate90.i18n.formatRound(league, round);
     if (typeof round === 'number' && round > 0) return (league === 'cl' ? '联赛阶段 ' : '') + '第 ' + round + ' 轮';
     const labels = {'round of 16':'1/8 决赛', 'quarter-finals':'1/4 决赛', 'semi-finals':'半决赛', final:'决赛',
       'knockout phase play-offs':'淘汰赛附加赛'};
@@ -279,6 +298,7 @@
     writeStore,
     loadCatalog,
     loadMatchDetails,
+    loadPlayersZh,
     loadPrematch:name=>/^prematch-[0-9a-f]{20}$/.test(name) ? asset(name) : Promise.resolve({rounds:[],picks:{}}),
     ratingTier,
     isValidDate,

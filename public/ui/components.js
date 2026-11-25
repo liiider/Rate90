@@ -2,6 +2,11 @@
   'use strict';
 
   const { escapeHtml: e, leagues, ratingTier, cnDate, roundName } = window.Rate90.catalog;
+  const i18n = window.Rate90.i18n;
+  const t = (key, vars) => i18n ? i18n.t(key, vars) : key;
+  const teamLabel = team => i18n ? i18n.teamName(team) : (team?.zh || team?.en || '');
+  const leagueShort = id => i18n ? i18n.leagueName(id, 'short') : (leagues[id]?.short || '全部赛事');
+  const leagueFull = id => i18n ? i18n.leagueName(id, 'name') : (leagues[id]?.name || '全部赛事');
 
   // Morphicons-compatible icon definitions (24x24 optical stroke grid)
   const morphDefs = {
@@ -153,13 +158,14 @@
   }
 
   function leagueRail(selected) {
-    const items = [['all', { short: '全部赛事', name: '全部赛事' }], ...Object.entries(leagues)].map(([id, l]) => {
+    const ids = ['all', ...Object.keys(leagues)];
+    const items = ids.map(id => {
       const active = selected === id;
       const mark = id === 'all' ? '<span class="rail-all-ic" aria-hidden="true">' + icon('grid') + '</span>' : leagueIcon(id, 'rail-ic');
-      return '<button type="button" class="rail-item' + (active ? ' active' : '') + '" aria-pressed="' + active + '" data-act="league" data-val="' + id + '" title="' + e(l.name) + '">' +
-        mark + '<span class="rail-label">' + e(l.short) + '</span></button>';
+      return '<button type="button" class="rail-item' + (active ? ' active' : '') + '" aria-pressed="' + active + '" data-act="league" data-val="' + id + '" title="' + e(leagueFull(id)) + '">' +
+        mark + '<span class="rail-label">' + e(leagueShort(id)) + '</span></button>';
     });
-    return '<nav class="rail-nav" aria-label="赛事列表">' + items.join('') + '</nav>';
+    return '<nav class="rail-nav" aria-label="' + e(t('leagueListAria')) + '">' + items.join('') + '</nav>';
   }
 
   function defaultCrestSvg() {
@@ -180,26 +186,28 @@
 
   function scoreBlock(rating) {
     if (!Number.isFinite(rating)) {
-      return '<span class="score-block upcoming" aria-label="暂无评分">—</span>';
+      return '<span class="score-block upcoming" aria-label="' + e(t('noRating')) + '">—</span>';
     }
-    const t = ratingTier(rating);
-    return '<span class="score-block ' + t.cls + '" aria-label="评分 ' + rating.toFixed(1) + '">' +
+    const tier = ratingTier(rating);
+    return '<span class="score-block ' + tier.cls + '" aria-label="' + e(t('ratingAria', { score: rating.toFixed(1) })) + '">' +
       rating.toFixed(1) +
     '</span>';
   }
 
   function scoreMini(rating) {
     if (!Number.isFinite(rating)) return '<span class="mini-score upcoming">—</span>';
-    const t = ratingTier(rating);
-    return '<span class="mini-score ' + t.cls + '">' + rating.toFixed(1) + '</span>';
+    const tier = ratingTier(rating);
+    return '<span class="mini-score ' + tier.cls + '">' + rating.toFixed(1) + '</span>';
   }
 
   function styleTagPills(m, withNames = false) {
     const ids = (m.styleIds || []).filter(id => Object.hasOwn(styleArt, id));
     if (!ids.length) return '';
     const tags = ids.map(id => {
-      const [tone, , description] = styleArt[id];
-      const label = e(m.styles[m.styleIds.indexOf(id)]);
+      const [tone, , fallbackDesc] = styleArt[id];
+      const zhLabel = m.styles[m.styleIds.indexOf(id)];
+      const label = e(i18n ? i18n.styleLabel(id, zhLabel) : zhLabel);
+      const description = i18n ? i18n.styleDesc(id) || fallbackDesc : fallbackDesc;
       const tipAttr = withNames ? ' title="' + label + '"' : ' data-tip="' + label + '"';
       const pill = '<span class="style-tag style-' + tone + '" role="img" aria-label="' + label + '"' + tipAttr + '>' + icon(id) + '</span>';
       return withNames ? '<li>' + pill + '<span><b>' + label + '</b><small>' + e(description) + '</small></span></li>' : pill;
@@ -212,14 +220,16 @@
     const ids = (m.styleIds || []).filter(id => Object.hasOwn(styleArt, id));
     if (!ids.length) return '';
     const items = ids.map(id => {
-      const [tone, , description] = styleArt[id];
-      const label = e(m.styles[m.styleIds.indexOf(id)]);
-      return '<span class="hero-tag style-' + tone + '" tabindex="0" aria-label="' + label + '：' + e(description) + '">' +
+      const [tone, , fallbackDesc] = styleArt[id];
+      const zhLabel = m.styles[m.styleIds.indexOf(id)];
+      const label = e(i18n ? i18n.styleLabel(id, zhLabel) : zhLabel);
+      const description = i18n ? i18n.styleDesc(id) || fallbackDesc : fallbackDesc;
+      return '<span class="hero-tag style-' + tone + '" tabindex="0" aria-label="' + label + ': ' + e(description) + '">' +
         icon(id) +
         '<span class="hero-tag-tip" role="tooltip"><b>' + label + '</b><small>' + e(description) + '</small></span>' +
       '</span>';
     }).join('');
-    return '<div class="detail-hero-tags" aria-label="比赛标签">' + items + '</div>';
+    return '<div class="detail-hero-tags" aria-label="' + e(t('matchTagsAria')) + '">' + items + '</div>';
   }
 
   function watchLabel(m, watched) {
@@ -247,14 +257,12 @@
     return '';
   }
 
-  function matchCard(m, { showLeagueIcon, showCompetition = false, isHero, watched } = {}) {
-    const l = leagues[m.league];
-    const meta = l.short + ' · ' + roundName(m.league, m.round);
+  function matchCard(m, { showLeagueIcon, showCompetition = false, isHero } = {}) {
+    const meta = leagueShort(m.league) + ' · ' + roundName(m.league, m.round);
     const time = cnDate(m.date) + (m.time ? ' ' + m.time : '');
     const crestSize = isHero ? 'hero' : 'card';
     const tags = styleTagPills(m);
-    const watch = watchLink(m, watched);
-    return '<article class="match-card' + (isHero ? ' is-hero' : '') + (watch ? ' has-watch' : '') + (tags ? ' has-tags' : '') + cardTierClass(m.rating, isHero) + '">' +
+    return '<article class="match-card' + (isHero ? ' is-hero' : '') + (tags ? ' has-tags' : '') + cardTierClass(m.rating, isHero) + '">' +
       (Number.isFinite(m.rating) && (m.rating >= 8 || isHero) ? '<span class="card-glow" aria-hidden="true"></span>' : '') +
       '<button type="button" class="card-details" data-act="details" data-val="' + e(m.id) + '">' +
         '<span class="card-main">' +
@@ -265,21 +273,20 @@
               (tags ? '<span class="card-tags-inline">' + tags + '</span>' : '') +
             '</span>' +
           '</span>' +
-          '<span class="side home"><span class="team-name">' + e(m.home.zh) + '</span>' + crest(m.home, crestSize) + '</span>' +
+          '<span class="side home"><span class="team-name">' + e(teamLabel(m.home)) + '</span>' + crest(m.home, crestSize) + '</span>' +
           '<span class="vs">vs</span>' +
-          '<span class="side away">' + crest(m.away, crestSize) + '<span class="team-name">' + e(m.away.zh) + '</span></span>' +
+          '<span class="side away">' + crest(m.away, crestSize) + '<span class="team-name">' + e(teamLabel(m.away)) + '</span></span>' +
           '<span class="card-score">' + scoreBlock(m.rating) + '</span>' +
         '</span>' +
-      '</button>' + watch +
+      '</button>' +
     '</article>';
   }
 
   function miniMatchRow(m) {
-    const l = leagues[m.league];
     return '<button type="button" class="mini-row" data-act="details" data-val="' + e(m.id) + '">' +
       '<span class="mini-info">' +
-        '<strong>' + e(m.home.zh) + ' vs ' + e(m.away.zh) + '</strong>' +
-        '<small>' + e(l.short) + ' · ' + e(cnDate(m.date)) + (m.time ? ' ' + e(m.time) : '') + '</small>' +
+        '<strong>' + e(teamLabel(m.home)) + ' vs ' + e(teamLabel(m.away)) + '</strong>' +
+        '<small>' + e(leagueShort(m.league)) + ' · ' + e(cnDate(m.date)) + (m.time ? ' ' + e(m.time) : '') + '</small>' +
       '</span>' +
       scoreMini(m.rating) +
     '</button>';
@@ -291,7 +298,7 @@
         (eyebrow ? '<div class="dialog-eyebrow">' + e(eyebrow) + '</div>' : '') +
         (title ? '<h2 id="dialog-title">' + e(title) + '</h2>' : '') +
       '</div>' +
-      '<button type="button" class="icon-btn" data-act="close" aria-label="关闭" title="关闭">' + icon('close') + '</button>' +
+      '<button type="button" class="icon-btn" data-act="close" aria-label="' + e(t('close')) + '" title="' + e(t('close')) + '">' + icon('close') + '</button>' +
     '</div>';
   }
 

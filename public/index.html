@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#050506">
-  <script>try{if(JSON.parse(localStorage.getItem('rate90.v2.theme'))==='light'){document.documentElement.dataset.theme='light';document.querySelector('meta[name="theme-color"]')?.setAttribute('content','#F4F6FA');}}catch{}</script>
+  <script>try{if(JSON.parse(localStorage.getItem('rate90.v2.theme'))==='light'){document.documentElement.dataset.theme='light';document.querySelector('meta[name="theme-color"]')?.setAttribute('content','#F4F6FA');}if(JSON.parse(localStorage.getItem('rate90.v2.lang'))==='en'){document.documentElement.lang='en';}}catch{}</script>
   <meta name="description" content="Rate90 无剧透足球回看指南。按轮次、评分与推荐理由挑选欧冠与五大联赛回放。">
   <meta property="og:title" content="Rate90 · 无剧透足球比赛评分">
   <meta property="og:description" content="用比赛评分、推荐理由和首发阵容，挑选值得回看的比赛。">
@@ -54,6 +54,7 @@
   <div id="live-status" class="sr" role="status" aria-live="polite"></div>
 
   <script defer src="./ui/vendor/morphicons-dom.js"></script>
+  <script defer src="./ui/i18n.js"></script>
   <script defer src="./ui/catalog.js"></script>
   <script defer src="./ui/components.js"></script>
   <script defer src="./ui/upcoming.js"></script>

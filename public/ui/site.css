@@ -300,6 +300,15 @@ svg {
   transform: scale(0.94);
 }
 
+.icon-btn.lang-btn {
+  width: auto;
+  min-width: 44px;
+  padding: 0 11px;
+  font: 760 12.5px/1 var(--font-display);
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
 .icon-badge {
   position: absolute;
   top: -4px;
@@ -326,8 +335,8 @@ svg {
   margin: 0 auto;
   padding: 28px 24px 56px;
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr);
-  gap: 30px;
+  grid-template-columns: 184px minmax(0, 1fr);
+  gap: 28px;
   align-items: start;
 }
 
@@ -610,7 +619,7 @@ svg {
 }
 
 .round-trigger {
-  width: 148px;
+  width: 158px;
   height: 100%;
   border: 0;
   border-radius: 0;
@@ -1120,11 +1129,9 @@ input[type="date"].date-input {
   position: relative;
   width: 100%;
   min-height: 78px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 64px;
+  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 13px 14px 13px 18px;
+  padding: 13px 22px;
   border-radius: 16px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1211,7 +1218,7 @@ input[type="date"].date-input {
 
 /* ═══ #1 SHOWCASE HERO CARD (≥ 8.0 — Radiant UEFA Royal Sapphire Broadcast Poster) ═══ */
 .match-card.is-hero {
-  padding: 18px 14px 18px 18px;
+  padding: 17px 22px;
   border-radius: 18px;
   background: linear-gradient(124deg, #0E2361 0%, #1B44B8 46%, #2563EB 82%, #1D4ED8 100%);
   border: 1px solid rgba(147, 197, 253, 0.45);
@@ -1308,7 +1315,7 @@ input[type="date"].date-input {
 
 /* ═══ 9.0+ LEGENDARY INFERNO CARD (Radiant Sunset Gold & Championship Crimson) ═══ */
 .match-card.tier-inferno {
-  padding: 18px 14px 18px 18px;
+  padding: 17px 22px;
   border-radius: 18px;
   background: linear-gradient(124deg, #7C1D0D 0%, #C2410C 48%, #EA580C 82%, #D97706 100%);
   border: 1px solid rgba(254, 240, 138, 0.52);
@@ -1466,7 +1473,7 @@ input[type="date"].date-input {
   position: relative;
   width: 100%;
   display: grid;
-  grid-template-columns: 132px minmax(0, 1fr) 24px minmax(0, 1fr) 78px;
+  grid-template-columns: 140px minmax(0, 1fr) 24px minmax(0, 1fr) 140px;
   align-items: center;
   gap: 10px;
 }
@@ -4313,7 +4320,7 @@ dialog[data-view="details"] .dialog-inner {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 12px 18px;
+  padding: 12px 22px;
   border-radius: 15px;
   background: color-mix(in srgb, var(--surface) 84%, var(--bg));
   border: 1px solid var(--border);
@@ -4329,14 +4336,14 @@ dialog[data-view="details"] .dialog-inner {
   position: relative;
   width: 100%;
   display: grid;
-  grid-template-columns: 144px minmax(0, 1fr) 24px minmax(0, 1fr) 86px;
+  grid-template-columns: 140px minmax(0, 1fr) 24px minmax(0, 1fr) 140px;
   align-items: center;
   gap: 10px;
 }
 
 /* #1 AI Strongly Recommended Card (Midnight Starry Indigo Poster — Mirrors Rated Hero Card) */
 .preview-row.is-pick-primary {
-  padding: 17px 18px 15px;
+  padding: 17px 22px 15px;
   border-radius: 18px;
   background: linear-gradient(126deg, #0B1126 0%, #14224C 50%, #1F3573 86%, #111A3B 100%);
   border: 1px solid rgba(165, 180, 252, 0.38);
@@ -4398,7 +4405,7 @@ dialog[data-view="details"] .dialog-inner {
 
 /* #2 AI Worth-Watching Card (Cool-Indigo Wireframe — Mirrors Rated 8.0+ Wireframe Card) */
 .preview-row.is-pick-secondary {
-  padding: 14px 18px 13px;
+  padding: 14px 22px 13px;
   border-radius: 16px;
   background: linear-gradient(122deg, #FFFFFF 0%, #F4F6FF 100%);
   border: 1.5px solid rgba(79, 70, 229, 0.36);
@@ -4426,11 +4433,13 @@ dialog[data-view="details"] .dialog-inner {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  width: 80px;
+  min-width: 82px;
   height: 46px;
+  padding: 0 10px;
   border-radius: 12px;
   flex: none;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .ai-plaque b {
@@ -4610,8 +4619,9 @@ dialog[data-view="details"] .dialog-inner {
   }
 
   .ai-plaque {
-    width: 72px;
+    min-width: 72px;
     height: 42px;
+    padding: 0 8px;
   }
 
   .ai-plaque b {

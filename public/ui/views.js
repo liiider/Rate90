@@ -2,16 +2,20 @@
   'use strict';
   const {leagues, roundName, dateSpan, cnDate, sortMatches, pickHeroIds, latestPlayedRound, escapeHtml: e} = window.Rate90.catalog;
   const {matchCard, leagueIcon, icon, canWatch} = window.Rate90.components;
+  const i18n = window.Rate90.i18n;
+  const t = (key, vars) => i18n ? i18n.t(key, vars) : key;
+  const leagueShort = id => i18n ? i18n.leagueName(id, 'short') : (leagues[id]?.short || '全部赛事');
 
   function seasonInfo(games) {
     const playable = games.filter(canWatch);
     const dates = playable.map(m => m.date).filter(Boolean).sort();
-    if (!dates.length) return { season: '全部轮次', span: '' };
+    if (!dates.length) return { season: t('allRounds'), span: '' };
     const y = Number(dates[0].slice(0, 4));
     const mo = Number(dates[0].slice(5, 7));
     const startYear = mo >= 7 ? y : y - 1;
+    const spanStr = startYear + '/' + String((startYear + 1) % 100).padStart(2, '0');
     return {
-      season: startYear + '/' + String((startYear + 1) % 100).padStart(2, '0') + ' 赛季',
+      season: t('seasonFmt', { span: spanStr }),
       span: dateSpan(playable)
     };
   }
@@ -53,8 +57,8 @@
     const hasPrematch = Boolean(catalog.prematchFile);
     const hasNext = all ? hasPrematch : (catalog.prematch ? Boolean(futureRounds[0]) : hasPrematch);
     const hasFollowing = all ? hasPrematch : (catalog.prematch ? Boolean(futureRounds[1]) : hasPrematch);
-    const nextLabel = futureRounds[0]?.label || '即将开赛';
-    const followingLabel = futureRounds[1]?.label || '后续赛程';
+    const nextLabel = futureRounds[0]?.label || t('upcomingRound');
+    const followingLabel = futureRounds[1]?.label || t('followingRound');
 
     const timeline = [...histRounds, ...(hasNext ? ['next'] : []), ...(hasFollowing ? ['following'] : [])];
     const currentKey = future && !date ? (horizon === 2 ? 'following' : 'next') : activeRound;
@@ -83,21 +87,21 @@
     const descHistRounds = [...histRounds].reverse();
     const options = descHistRounds.map(value =>
       '<option value="' + e(value) + '"' + (!future && !date && !isAllRounds && value === round ? ' selected' : '') + '>' + e(roundName(league, value)) + '</option>').join('');
-    const dateLabel = date ? date.replaceAll('-', '/') : '选择日期';
-    const currentRoundLabel = future ? '按日期' : sections.length === 1
+    const dateLabel = date ? date.replaceAll('-', '/') : t('pickDate');
+    const currentRoundLabel = future ? t('byDate') : sections.length === 1
       ? roundName(sections[0].id, sections[0].value)
-      : (activeRound != null && !all ? roundName(league, activeRound) : '当期各轮');
+      : (activeRound != null && !all ? roundName(league, activeRound) : t('currentRoundsMulti'));
     const roundTriggerLabel = date ? currentRoundLabel
       : future ? (horizon === 2 ? followingLabel : nextLabel)
-      : isCurrentAll ? '当前轮次'
-      : isAllRounds ? '全部轮次'
+      : isCurrentAll ? t('currentRound')
+      : isAllRounds ? t('allRounds')
       : round != null ? roundName(league, round)
-      : '全部轮次';
+      : t('allRounds');
     const mergedHistory = !future && !all && sections.length === 1;
     const mergedFuture = future && !all && !date && futureSections.length === 1;
     const merged = mergedHistory || mergedFuture;
 
-    const scopeTitle = all ? '全部赛事' : leagues[league].short;
+    const scopeTitle = all ? leagueShort('all') : leagueShort(league);
     const dockIcon = !all ? leagueIcon(league, 'dock-ic') : '';
     let subTitle = '';
     let subRoundCls = 'dock-round';
@@ -111,19 +115,19 @@
       const sec = futureSections[0];
       subTitle = sec.roundLabel;
       subRoundCls = 'dock-round preview-round';
-      futureBadge = '<span class="dock-badge-future">未开赛</span>';
-      dockSpan = sec.span || '未来赛程';
+      futureBadge = '<span class="dock-badge-future">' + e(t('notStarted')) + '</span>';
+      dockSpan = sec.span || t('futureSchedule');
     } else if (future && date) {
       subTitle = cnDate(date);
-      futureBadge = '<span class="dock-badge-future">未开赛</span>';
+      futureBadge = '<span class="dock-badge-future">' + e(t('notStarted')) + '</span>';
       const count = futureSections.reduce((sum, s) => sum + s.games.length, 0);
-      dockSpan = count ? count + ' 场未开赛' : '未来赛程';
+      dockSpan = count ? t('unplayedCount', { count }) : t('futureSchedule');
     } else if (future) {
       subTitle = horizon === 2 ? followingLabel : nextLabel;
-      futureBadge = '<span class="dock-badge-future">未开赛</span>';
-      dockSpan = futureSpan || '未来赛程';
+      futureBadge = '<span class="dock-badge-future">' + e(t('notStarted')) + '</span>';
+      dockSpan = futureSpan || t('futureSchedule');
     } else if (isCurrentAll) {
-      subTitle = '当前轮次';
+      subTitle = t('currentRound');
       dockSpan = dateSpan(sections.flatMap(s => s.games));
     } else if (isAllRounds) {
       const info = seasonInfo(scope);
@@ -152,11 +156,11 @@
 
     const popoverItems = [
       all ? '<button type="button" class="round-opt' + (isCurrentAll ? ' is-selected' : '') + '" role="option" aria-selected="' + String(isCurrentAll) + '" data-act="pickRound" data-val="current">' +
-        '<span class="round-opt-label">当前轮次</span>' +
+        '<span class="round-opt-label">' + e(t('currentRound')) + '</span>' +
         '<span class="round-opt-meta">' + (isCurrentAll ? '<span class="round-opt-check" aria-hidden="true">' + icon('check') + '</span>' : '') + '</span>' +
       '</button>' : '',
       '<button type="button" class="round-opt' + (isAllRounds ? ' is-selected' : '') + '" role="option" aria-selected="' + String(isAllRounds) + '" data-act="pickRound" data-val="all">' +
-        '<span class="round-opt-label">全部轮次</span>' +
+        '<span class="round-opt-label">' + e(t('allRounds')) + '</span>' +
         '<span class="round-opt-meta">' + (isAllRounds ? '<span class="round-opt-check" aria-hidden="true">' + icon('check') + '</span>' : '') + '</span>' +
       '</button>',
       (hasFollowing || hasNext || descHistRounds.length) ? '<div class="round-opt-sep" role="separator"></div>' : '',
@@ -164,7 +168,7 @@
         const selected = future && !date && horizon === 2;
         return '<button type="button" class="round-opt is-future' + (selected ? ' is-selected' : '') + '" role="option" aria-selected="' + String(selected) + '" data-act="pickRound" data-val="following">' +
           '<span class="round-opt-label">' + e(followingLabel) + '</span>' +
-          '<span class="round-opt-meta"><span class="round-opt-tag is-future">未开赛</span>' +
+          '<span class="round-opt-meta"><span class="round-opt-tag is-future">' + e(t('notStarted')) + '</span>' +
             (selected ? '<span class="round-opt-check" aria-hidden="true">' + icon('check') + '</span>' : '') +
           '</span>' +
         '</button>';
@@ -173,7 +177,7 @@
         const selected = future && !date && horizon === 1;
         return '<button type="button" class="round-opt is-future' + (selected ? ' is-selected' : '') + '" role="option" aria-selected="' + String(selected) + '" data-act="pickRound" data-val="next">' +
           '<span class="round-opt-label">' + e(nextLabel) + '</span>' +
-          '<span class="round-opt-meta"><span class="round-opt-tag is-future">未开赛</span>' +
+          '<span class="round-opt-meta"><span class="round-opt-tag is-future">' + e(t('notStarted')) + '</span>' +
             (selected ? '<span class="round-opt-check" aria-hidden="true">' + icon('check') + '</span>' : '') +
           '</span>' +
         '</button>';
@@ -193,49 +197,49 @@
 
     const dock = '<div class="filter-dock round-dock' + (merged ? ' is-merged' : '') + (future ? ' is-future-dock' : '') + '">' + titleHtml +
       '<div class="dock-controls">' +
-        '<div class="round-jump"><span class="sr">轮次跳转</span><span class="round-control">' +
-          '<button type="button" class="round-nav-btn" data-act="prevRound"' + (prevRound != null ? ' data-val="' + e(prevRound) + '"' : ' disabled') + ' aria-label="前一轮" title="上一轮">' + icon('left') + '</button>' +
+        '<div class="round-jump"><span class="sr">' + e(t('roundJump')) + '</span><span class="round-control">' +
+          '<button type="button" class="round-nav-btn" data-act="prevRound"' + (prevRound != null ? ' data-val="' + e(prevRound) + '"' : ' disabled') + ' aria-label="' + e(t('prevRound')) + '" title="' + e(t('prevRoundTitle')) + '">' + icon('left') + '</button>' +
           '<button type="button" class="round-trigger" id="round-trigger" data-act="toggleRoundMenu" aria-expanded="false" aria-haspopup="listbox" aria-controls="round-popover">' +
             '<span class="round-trigger-label">' + e(roundTriggerLabel) + '</span>' + icon('down') +
           '</button>' +
-          '<button type="button" class="round-nav-btn" data-act="nextRound"' + (nextRound != null ? ' data-val="' + e(nextRound) + '"' : ' disabled') + ' aria-label="后一轮" title="下一轮">' + icon('right') + '</button>' +
+          '<button type="button" class="round-nav-btn" data-act="nextRound"' + (nextRound != null ? ' data-val="' + e(nextRound) + '"' : ' disabled') + ' aria-label="' + e(t('nextRound')) + '" title="' + e(t('nextRoundTitle')) + '">' + icon('right') + '</button>' +
         '</span>' +
-        '<select class="sr-date-input" id="round-picker" aria-label="选择轮次" tabindex="-1">' +
+        '<select class="sr-date-input" id="round-picker" aria-label="' + e(t('pickRound')) + '" tabindex="-1">' +
           (date ? '<option value="" hidden disabled selected>' + e(currentRoundLabel) + '</option>' : '') +
-          (all ? '<option value="current"' + (isCurrentAll ? ' selected' : '') + '>当前轮次</option>' : '') +
-          '<option value="all"' + (isAllRounds ? ' selected' : '') + '>全部轮次</option>' +
+          (all ? '<option value="current"' + (isCurrentAll ? ' selected' : '') + '>' + e(t('currentRound')) + '</option>' : '') +
+          '<option value="all"' + (isAllRounds ? ' selected' : '') + '>' + e(t('allRounds')) + '</option>' +
           (hasFollowing ? '<option value="following"' + (future && !date && horizon === 2 ? ' selected' : '') + '>' + e(followingLabel) + '</option>' : '') +
           (hasNext ? '<option value="next"' + (future && !date && horizon === 1 ? ' selected' : '') + '>' + e(nextLabel) + '</option>' : '') +
           options +
         '</select>' +
-        '<div class="round-popover" id="round-popover" hidden role="listbox" aria-label="选择轮次">' + popoverItems + '</div>' +
+        '<div class="round-popover" id="round-popover" hidden role="listbox" aria-label="' + e(t('pickRound')) + '">' + popoverItems + '</div>' +
         '</div>' +
-        '<div class="round-date"><label class="sr" for="date-picker">日期跳转</label>' +
+        '<div class="round-date"><label class="sr" for="date-picker">' + e(t('dateJump')) + '</label>' +
           '<div class="date-picker-wrap">' +
             '<button type="button" class="date-input date-trigger' + (date ? ' has-value' : '') + '" id="cal-trigger" data-act="toggleCal" aria-expanded="false" aria-haspopup="dialog" aria-controls="cal-popover">' +
               icon('calendar') + '<span>' + e(dateLabel) + '</span>' +
             '</button>' +
             '<input class="sr-date-input" id="date-picker" type="date" value="' + e(date) + '" tabindex="-1">' +
-            '<div class="cal-popover" id="cal-popover" hidden role="dialog" aria-label="选择比赛日期"></div>' +
+            '<div class="cal-popover" id="cal-popover" hidden role="dialog" aria-label="' + e(t('pickMatchDate')) + '"></div>' +
           '</div>' +
         '</div>' +
       '</div></div>';
     if (future) {
       if (!catalog.prematch) return dock + (previewError ?
-        '<p class="state-card">赛程读取失败。 <button class="text-btn" data-act="retryPreview">重新读取</button></p>' :
-        '<p class="state-card">正在读取未来赛程…</p>');
+        '<p class="state-card">' + e(t('previewLoadError')) + ' <button class="text-btn" data-act="retryPreview">' + e(t('retryLoad')) + '</button></p>' :
+        '<p class="state-card">' + e(t('loadingSchedule')) + '</p>');
       return dock + window.Rate90.upcoming.view(catalog, futureSections, { merged: mergedFuture, showLeagueIcon: all && Boolean(date) });
     }
-    if (!sections.length) return dock + '<p class="state-card">暂无对应赛程。</p>';
+    if (!sections.length) return dock + '<p class="state-card">' + e(t('noSchedule')) + '</p>';
     return dock + sections.map(({id,value,games}) => {
       const sorted = sortMatches(games), heroes = pickHeroIds(sorted);
-      const headingText = all ? (leagues[id].short + ' · ' + roundName(id,value)) : roundName(id,value);
+      const headingText = all ? (leagueShort(id) + ' · ' + roundName(id,value)) : roundName(id,value);
       const heading = merged ? '' :
         '<header class="round-heading">' + (all ? leagueIcon(id, 'heading-ic') : '') + '<h2>' + e(headingText) +
         '</h2><span>' + e(dateSpan(games)) + '</span></header>';
       return '<section class="round-group' + (merged ? ' is-merged-group' : '') + '" data-league="' + id + '" data-round="' + e(value) + '">' +
         heading + '<div class="card-stack">' +
-        sorted.map(m => matchCard(m,{showLeagueIcon:false,isHero:heroes.has(m.id),watched:watched.has(m.id)})).join('') + '</div></section>';
+        sorted.map(m => matchCard(m,{showLeagueIcon:false,isHero:heroes.has(m.id)})).join('') + '</div></section>';
     }).join('');
   }
   window.Rate90.views = {roundView};

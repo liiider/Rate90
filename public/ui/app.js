@@ -8,12 +8,18 @@
     writeStore,
     loadCatalog,
     loadMatchDetails,
+    loadPlayersZh,
     ratingTier,
     isValidDate,
     cnDate,
     roundName,
     latestPlayedRound
   } = window.Rate90.catalog;
+
+  const i18n = window.Rate90.i18n;
+  const t = (key, vars) => i18n ? i18n.t(key, vars) : key;
+  const teamLabel = team => i18n ? i18n.teamName(team) : (team?.zh || team?.en || '');
+  const leagueShort = id => i18n ? i18n.leagueName(id, 'short') : (leagues[id]?.short || '全部赛事');
 
   const {
     icon,
@@ -23,10 +29,6 @@
     leagueRail,
     crest,
     detailHeroTags,
-    watchLink,
-    watchLabel,
-    canWatch,
-    miniMatchRow,
     dialogHead
   } = window.Rate90.components;
 
@@ -83,9 +85,9 @@
   const state = {
     catalog: null,
     route: routeFromUrl(),
-    watched: new Set(),
     peeked: new Set(),
     theme: readStore('theme', 'dark'),
+    lang: i18n ? i18n.getLang() : 'zh',
     details: new Map(),
     pendingDetails: new Set()
   };
@@ -101,7 +103,25 @@
     if (meta) meta.setAttribute('content', isDark ? '#050506' : '#F4F6FA');
   }
 
+  function syncShellCopy() {
+    const skip = document.querySelector('.skip');
+    if (skip) skip.textContent = t('skip');
+    const brand = document.querySelector('.brand');
+    if (brand) brand.setAttribute('aria-label', t('brandAria'));
+    const tag = document.querySelector('.brand-tag');
+    if (tag) tag.textContent = t('brandTag');
+    const rail = $('league-rail');
+    if (rail) rail.setAttribute('aria-label', t('leagueFilterAria'));
+    const footerNav = document.querySelector('.footer-links');
+    if (footerNav) footerNav.setAttribute('aria-label', t('footerAria'));
+    const aboutBtn = document.querySelector('.footer-links [data-act="about"]');
+    if (aboutBtn) aboutBtn.textContent = t('about');
+    const methodBtn = document.querySelector('.footer-links [data-act="method"]');
+    if (methodBtn) methodBtn.textContent = t('method');
+  }
+
   applyTheme();
+  syncShellCopy();
 
   function announce(msg) {
     $('live-status').textContent = msg;
@@ -111,26 +131,31 @@
   let lastTopBarSig = '';
 
   function renderTopBar() {
-    const count = watchedMatches().length;
     const isDark = state.theme === 'dark';
-    const sig = count + ':' + isDark;
+    const lang = state.lang;
+    const sig = isDark + ':' + lang;
     if (sig === lastTopBarSig) return;
     const bar = $('top-actions');
     const firstMount = !lastTopBarSig;
     if (firstMount) {
       bar.innerHTML =
-        '<button type="button" class="icon-btn" data-act="watched" title="看过" aria-label="看过">' +
-          icon('history') + '<span class="icon-badge" hidden></span></button>' +
-        '<button type="button" class="icon-btn" data-act="theme" aria-label="切换明暗主题">' +
+        '<button type="button" class="icon-btn lang-btn" data-act="lang"></button>' +
+        '<button type="button" class="icon-btn" data-act="theme">' +
           icon(isDark ? 'sun' : 'moon') + '</button>';
     }
     lastTopBarSig = sig;
-    const badge = bar.querySelector('.icon-badge');
-    badge.hidden = count === 0;
-    badge.textContent = count || '';
+    const langBtn = bar.querySelector('[data-act="lang"]');
+    if (langBtn) {
+      langBtn.textContent = t('langBtnLabel');
+      langBtn.title = t('langSwitchTitle');
+      langBtn.setAttribute('aria-label', t('langSwitchAria'));
+    }
     const themeButton = bar.querySelector('[data-act="theme"]');
-    themeButton.title = isDark ? '切换浅色主题' : '切换深色主题';
-    if (!firstMount) morphTo(themeButton, isDark ? 'sun' : 'moon', 'smooth');
+    if (themeButton) {
+      themeButton.title = isDark ? t('themeToLight') : t('themeToDark');
+      themeButton.setAttribute('aria-label', t('themeAria'));
+      if (!firstMount) morphTo(themeButton, isDark ? 'sun' : 'moon', 'smooth');
+    }
   }
 
   function syncLeagueRail(league) {
@@ -150,9 +175,10 @@
 
   function render() {
     if (!state.catalog) return;
+    syncShellCopy();
     renderTopBar();
     syncLeagueRail(state.route.league);
-    document.title = (leagues[state.route.league]?.short ?? '全部赛事') + ' · Rate90';
+    document.title = leagueShort(state.route.league) + ' · Rate90';
     if (state.route.future && !state.catalog.prematch && !state.previewLoading && !state.previewError) {
       state.previewLoading=true;
       window.Rate90.catalog.loadPrematch(state.catalog.prematchFile).then(data=>{state.catalog.prematch=data;})
@@ -261,61 +287,18 @@
     if (!m?.hasDetails || state.details.has(id) || state.pendingDetails.has(id)) return;
     state.pendingDetails.add(id);
     try {
-      state.details.set(id, await loadMatchDetails(id));
+      const [detail] = await Promise.all([loadMatchDetails(id), loadPlayersZh()]);
+      state.details.set(id, detail);
       if (modal?.type === 'details' && modal.id === id) {
         refreshFacts(id);
       }
     } catch {
       if (modal?.type === 'details' && modal.id === id) {
-        $('match-facts').innerHTML = '<p class="match-note">详细资料读取失败。 ' +
-          '<button type="button" class="text-btn" data-act="retryDetails" data-val="' + e(id) + '">重新读取</button></p>';
+        $('match-facts').innerHTML = '<p class="match-note">' + e(t('detailsLoadError')) + ' ' +
+          '<button type="button" class="text-btn" data-act="retryDetails" data-val="' + e(id) + '">' + e(t('retryLoad')) + '</button></p>';
       }
     } finally {
       state.pendingDetails.delete(id);
-    }
-  }
-
-  function watchedMatches() {
-    return [...state.watched].reverse().map(id => state.catalog?.byId.get(id)).filter(m => m && canWatch(m));
-  }
-
-  function readWatched(fallback) {
-    const data = readStore('watched', fallback);
-    const ids = Array.isArray(data) ? data : [];
-    return new Set(ids.filter(id => typeof id === 'string' && id).map(id => state.catalog.byId.get(id)?.id || id));
-  }
-
-  function setWatched(id, value) {
-    const m = state.catalog.byId.get(id);
-    if (!m || (value && !canWatch(m))) return;
-    state.watched = readWatched([...state.watched]);
-    if (value) state.watched.add(m.id);
-    else state.watched.delete(m.id);
-    writeStore('watched', [...state.watched]);
-    syncWatched();
-    announce(value ? '已加入看过' : '已从看过中移除');
-  }
-
-  function syncWatched() {
-    renderTopBar();
-    for (const link of document.querySelectorAll('a[data-act="watch"]')) {
-      const m = state.catalog.byId.get(link.dataset.val);
-      if (!m) continue;
-      const watched = state.watched.has(m.id);
-      if (link.classList.contains('is-watched') === watched) continue;
-      link.classList.toggle('is-watched', watched);
-      link.setAttribute('aria-label', watchLabel(m, watched));
-      morphTo(link.querySelector('.watch-icon'), watched ? 'check' : 'external', 'snappy');
-    }
-    if (modal?.type === 'details') {
-      const undo = $('undo-watch');
-      const hadFocus = document.activeElement === undo;
-      undo.hidden = !state.watched.has(modal.id);
-      if (undo.hidden && hadFocus) dialog.querySelector('[data-act="watch"]')?.focus();
-    } else if (modal?.type === 'watched') {
-      renderModal();
-      const next = dialog.querySelector('[data-act="removeWatched"]') || dialog.querySelector('[data-act="close"]');
-      next?.focus();
     }
   }
 
@@ -334,27 +317,15 @@
     if (!modal) return;
     const { type, id } = modal;
 
-    if (type === 'watched') {
-      const seen = watchedMatches();
-      const rows = seen.map(m => '<div class="watch-history-row">' + miniMatchRow(m) +
-        '<button type="button" class="icon-btn" data-act="removeWatched" data-val="' + e(m.id) + '" title="撤销看过" aria-label="撤销看过 ' +
-        e(m.home.zh + ' 对 ' + m.away.zh) + '">' + icon('undo') + '</button></div>');
-      showDialog(
-        dialogHead('看过', seen.length + ' 场') + '<div class="modal-list">' +
-        (rows.length ? rows.join('') : '<div class="state-card">暂无观看记录</div>') + '</div>'
-      );
-      return;
-    }
-
     if (type === 'about') {
-      showDialog(dialogHead('关于 Rate90') +
-        '<div class="about-copy"><p>Rate90 是一份无剧透的足球回看指南，收录欧冠和五大联赛。选一轮比赛，看评分和推荐理由，再决定今晚看哪场。</p></div>');
+      showDialog(dialogHead(t('about')) +
+        '<div class="about-copy"><p>' + e(t('aboutBody')) + '</p></div>');
       return;
     }
 
     if (type === 'method') {
-      showDialog(dialogHead('评分方法') +
-        '<div class="about-copy"><p>Rate90 不按最终比分或球队名气打分，而是依据全场过程数据从六个量化维度加权计分，满分 10 分。</p></div>');
+      showDialog(dialogHead(t('method')) +
+        '<div class="about-copy"><p>' + e(t('methodBody')) + '</p></div>');
       return;
     }
 
@@ -362,12 +333,13 @@
       const m = state.catalog.byId.get(id);
       if (!m) { closeModal(); return; }
 
-      const meta = [leagues[m.league].short, roundName(m.league, m.round), cnDate(m.date), m.time].filter(Boolean);
+      const homeName = teamLabel(m.home);
+      const awayName = teamLabel(m.away);
+      const meta = [leagueShort(m.league), roundName(m.league, m.round), cnDate(m.date), m.time].filter(Boolean);
       const rated = Number.isFinite(m.rating);
-      const watched = state.watched.has(m.id);
       const heroTags = detailHeroTags(m);
       const facts = m.hasDetails && !state.details.has(m.id)
-        ? '<p class="match-note" role="status">正在读取本场资料…</p>'
+        ? '<p class="match-note" role="status">' + e(t('loadingDetails')) + '</p>'
         : window.Rate90.renderMatchFacts(m, state.details.get(m.id), detailTab);
 
       const tierCls = ratingTier(m.rating).cls;
@@ -375,12 +347,12 @@
         '<div class="dialog-scroll">' +
           '<div class="detail-hero detail-hero-' + tierCls + (heroTags ? ' has-hero-tags' : '') + '">' +
             '<div class="detail-eyebrow">' + leagueIcon(m.league, 'detail-ic') + '<span class="detail-meta">' + e(meta.join(' · ')) + '</span></div>' +
-            '<h2 id="dialog-title" class="sr">' + e(m.home.zh + ' 对 ' + m.away.zh) + '</h2>' +
+            '<h2 id="dialog-title" class="sr">' + e(t('matchVs', { home: homeName, away: awayName })) + '</h2>' +
             '<div class="duel-stage">' +
-              '<div class="duel-club">' + crest(m.home, 'lg') + '<b>' + e(m.home.zh) + '</b></div>' +
-              '<div class="detail-plaque ' + tierCls + '" aria-label="' + (rated ? '评分 ' + m.rating.toFixed(1) : '暂无评分') + '">' +
+              '<div class="duel-club">' + crest(m.home, 'lg') + '<b>' + e(homeName) + '</b></div>' +
+              '<div class="detail-plaque ' + tierCls + '" aria-label="' + e(rated ? t('ratingAria', { score: m.rating.toFixed(1) }) : t('noRating')) + '">' +
                 '<div class="plaque-num">' + (rated ? m.rating.toFixed(1) + '<small>/10</small>' : '—') + '</div></div>' +
-              '<div class="duel-club">' + crest(m.away, 'lg') + '<b>' + e(m.away.zh) + '</b></div>' +
+              '<div class="duel-club">' + crest(m.away, 'lg') + '<b>' + e(awayName) + '</b></div>' +
             '</div>' +
             heroTags +
           '</div>' +
@@ -389,11 +361,8 @@
           '</div>' +
         '</div>' +
         '<div class="detail-footer">' +
-          '<button type="button" id="undo-watch" class="btn detail-undo" data-act="removeWatched" data-val="' + e(m.id) + '"' +
-            (watched ? '' : ' hidden') + '>' + icon('undo') + '撤销看过</button>' +
           '<div class="detail-footer-actions">' +
-            watchLink(m, watched) +
-            '<button type="button" class="btn detail-confirm" data-act="close" autofocus>确定</button>' +
+            '<button type="button" class="btn detail-confirm" data-act="close" autofocus>' + e(t('done')) + '</button>' +
           '</div>' +
         '</div>'
       );
@@ -413,7 +382,7 @@
     url.searchParams.set('match', m.id);
     try {
       await navigator.clipboard.writeText(url.href);
-      if ($('share-feedback')) $('share-feedback').textContent = '已复制无剧透比赛链接。';
+      if ($('share-feedback')) $('share-feedback').textContent = t('copiedLink');
       if (button) {
         morphTo(button, 'check', 'snappy');
         clearTimeout(copyTimer);
@@ -517,24 +486,28 @@
       const tier = tiers.get(ymd) || 0;
       const cls = ['cal-day', tier === 4 ? 'is-future' : tier === 3 ? 'is-high' : tier === 2 ? 'is-rated' : tier === 1 ? 'is-scheduled' : 'is-rest',
         ymd === selected ? 'is-selected' : ''].filter(Boolean).join(' ');
-      const title = tier === 4 ? '未来赛程' : tier === 3 ? '含 8.0+ 高分比赛' : tier === 2 ? '有已评分比赛' : tier === 1 ? '有赛程，暂无评分' : '无比赛日';
-      cells.push('<button type="button" class="' + cls + '" data-act="pickDate" data-val="' + ymd + '" title="' + ymd + ' · ' + title + '">' +
+      const title = tier === 4 ? t('calTierFuture') : tier === 3 ? t('calTierHigh') : tier === 2 ? t('calTierRated') : tier === 1 ? t('calTierScheduled') : t('calTierRest');
+      cells.push('<button type="button" class="' + cls + '" data-act="pickDate" data-val="' + ymd + '" title="' + ymd + ' · ' + e(title) + '">' +
         '<span>' + d + '</span>' + (tier ? '<i class="cal-dot" aria-hidden="true"></i>' : '') + '</button>');
     }
 
+    const weekdays = (t('calWeekdays') || ['一', '二', '三', '四', '五', '六', '日'])
+      .map(w => '<span>' + e(w) + '</span>').join('');
+    const monthTitle = i18n ? i18n.formatMonthYear(year, month) : (year + '年 ' + (month + 1) + '月');
+
     pop.innerHTML =
       '<div class="cal-head">' +
-        '<button type="button" class="cal-nav" data-act="calMonth" data-val="' + prevVal + '" aria-label="上个月">' + icon('left') + '</button>' +
-        '<strong>' + year + '年 ' + (month + 1) + '月</strong>' +
-        '<button type="button" class="cal-nav" data-act="calMonth" data-val="' + nextVal + '" aria-label="下个月">' + icon('right') + '</button>' +
+        '<button type="button" class="cal-nav" data-act="calMonth" data-val="' + prevVal + '" aria-label="' + e(t('calPrevMonth')) + '">' + icon('left') + '</button>' +
+        '<strong>' + e(monthTitle) + '</strong>' +
+        '<button type="button" class="cal-nav" data-act="calMonth" data-val="' + nextVal + '" aria-label="' + e(t('calNextMonth')) + '">' + icon('right') + '</button>' +
       '</div>' +
-      '<div class="cal-weekdays"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>' +
+      '<div class="cal-weekdays">' + weekdays + '</div>' +
       '<div class="cal-grid">' + cells.join('') + '</div>' +
       '<div class="cal-foot">' +
         '<span class="cal-legend"><i class="cal-swatch high"></i>8.0+</span>' +
-        '<span class="cal-legend"><i class="cal-swatch rated"></i>已评</span>' +
-        '<span class="cal-legend"><i class="cal-swatch future"></i>未来</span>' +
-        (selected ? '<button type="button" class="cal-clear" data-act="clearDate">清除</button>' : '') +
+        '<span class="cal-legend"><i class="cal-swatch rated"></i>' + e(t('calLegendRated')) + '</span>' +
+        '<span class="cal-legend"><i class="cal-swatch future"></i>' + e(t('calLegendFuture')) + '</span>' +
+        (selected ? '<button type="button" class="cal-clear" data-act="clearDate">' + e(t('calClear')) + '</button>' : '') +
       '</div>';
   }
 
@@ -644,7 +617,6 @@
         openDetails(val);
         break;
       case 'method':
-      case 'watched':
       case 'about':
         openModal(act);
         break;
@@ -685,14 +657,16 @@
       case 'retryDetails':
         await loadFacts(val);
         break;
-      case 'watch':
-        setWatched(val, true);
-        break;
-      case 'removeWatched':
-        setWatched(val, false);
-        break;
       case 'copyLink':
         await copyMatchLink(val, btn);
+        break;
+      case 'lang':
+        state.lang = state.lang === 'zh' ? 'en' : 'zh';
+        if (i18n) i18n.setLang(state.lang);
+        railMounted = false;
+        render();
+        if (modal) renderModal();
+        announce(t('langSwitched'));
         break;
       case 'theme':
         state.theme = state.theme === 'dark' ? 'light' : 'dark';
@@ -726,21 +700,29 @@
     } else if (ev.target.id==='round-picker') chooseRound(ev.target.value);
   });
 
-  document.addEventListener('auxclick', ev => {
-    const link = ev.target.closest('a[data-act="watch"]');
-    if (ev.button === 1 && link) setWatched(link.dataset.val, true);
-  });
   window.addEventListener('popstate', () => restoreRoute());
   window.addEventListener('storage', ev => {
-    if (!state.catalog || (ev.key !== null && ev.key !== 'rate90.v2.watched')) return;
-    state.watched = readWatched([]);
-    syncWatched();
+    if (!state.catalog) return;
+    if (ev.key === 'rate90.v2.lang') {
+      const next = readStore('lang', 'zh') === 'en' ? 'en' : 'zh';
+      if (next !== state.lang) {
+        state.lang = next;
+        if (i18n) i18n.setLang(next);
+        railMounted = false;
+        render();
+        if (modal) renderModal();
+      }
+    }
   });
 
   try {
     state.catalog = await loadCatalog();
-    state.watched = readWatched([]);
     restoreRoute(true);
+    loadPlayersZh().then(loaded => {
+      if (loaded && modal?.type === 'details' && state.details.has(modal.id)) {
+        refreshFacts(modal.id);
+      }
+    });
     if (state.catalog.prematchFile && !state.catalog.prematch && !state.previewLoading) {
       state.previewLoading = true;
       window.Rate90.catalog.loadPrematch(state.catalog.prematchFile).then(data => {
@@ -749,6 +731,6 @@
       }).catch(() => {}).finally(() => { state.previewLoading = false; });
     }
   } catch {
-    $('view').innerHTML = '<div class="state-card">比赛数据加载失败，请刷新页面重试。</div>';
+    $('view').innerHTML = '<div class="state-card">' + e(t('loadError')) + '</div>';
   }
 })();

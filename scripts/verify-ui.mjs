@@ -11,7 +11,6 @@ const require = createRequire(import.meta.url);
 const {JSDOM, ResourceLoader, VirtualConsole} = require(process.env.RATE90_JSDOM || 'jsdom');
 const publicRoot = new URL('../public/', import.meta.url);
 const home = 'https://rate90.test/index.html';
-const migu = 'https://www.miguvideo.com/';
 const mainMatch = '209642';
 const taggedMatch = '209638';
 const styles = ['关键先生','流畅配合'];
@@ -113,10 +112,7 @@ function assertMainCard(document) {
     assert.ok(icon?.querySelector('svg') || icon?.matches('svg'), 'Missing icon ' + label);
     assert.ok(!visibleText(tagged).includes(label), 'Visible text on icon-only card: ' + label);
   }
-  const watch = action(entry, 'watch');
-  assert.equal(watch.href, migu);
-  assert.equal(watch.target, '_blank');
-  assert.ok(!action(entry, 'details').contains(watch), 'Watch link nested in details button');
+  assert.equal(entry.querySelector('[data-act="watch"]'),null);
   assert.doesNotMatch(visibleText(entry), /超燃必看|看看集锦|焦点之战|评分来源|可跳过|无剧透看点/);
 }
 
@@ -176,9 +172,10 @@ test('each spoiler tab unlocks separately per match and the tactical panel displ
   });
   const overlay = document.querySelector('#overlay');
   await until(() => overlay.querySelectorAll('.starters li').length === 22, 'Expected both complete starting lineups');
+  await until(() => overlay.querySelector('.starters')?.textContent.includes('鲁本·迪亚斯'), 'Expected Chinese squad names');
   for (const [side, formation, coach, captain] of [
-    ['home', '4-2-3-1', 'Enzo Maresca', 'Rúben Dias'],
-    ['away', '4-3-3', 'Álvaro Arbeloa', 'Calvin Bassey']
+    ['home', '4-2-3-1', '恩佐·马雷斯卡', '鲁本·迪亚斯'],
+    ['away', '4-3-3', '阿尔瓦罗·阿韦洛亚', '巴锡']
   ]) {
     const team = overlay.querySelector('.lineup-team[data-side="' + side + '"]');
     assert.equal(team.querySelectorAll('.starters li').length, 11);
@@ -189,9 +186,9 @@ test('each spoiler tab unlocks separately per match and the tactical panel displ
     assert.ok([...team.querySelectorAll('.starters li')].every(row => /^\d+$/.test(row.querySelector('.shirt-number')?.textContent)));
   }
   assert.equal(overlay.querySelector('.detail-hero-tags'),null);
-  assert.doesNotMatch(visibleText(overlay), /Rayan Cherki|116\.6|119\.0|揭晓|全场比分/);
+  assert.doesNotMatch(visibleText(overlay), /切尔基|116\.6|119\.0|揭晓|全场比分/);
   action(overlay,'detailTab','substitutes').click();
-  assert.match(visibleText(overlay.querySelector('[data-panel="substitutes"]')), /Rayan Cherki/);
+  assert.match(visibleText(overlay.querySelector('[data-panel="substitutes"]')), /切尔基/);
   action(overlay,'detailTab','stats').click();
   assert.ok(overlay.querySelector('[data-panel="guard"]'));
   assert.equal(document.activeElement,action(overlay,'cancelPeek'));
@@ -212,7 +209,7 @@ test('each spoiler tab unlocks separately per match and the tactical panel displ
   assert.ok(overlay.querySelector('[data-panel="guard"]'));
   action(overlay,'confirmPeek','events').click();
   const eventText = visibleText(overlay.querySelector('[data-panel="events"]'));
-  for (const value of ['换人','黄牌','E. Fernández']) assert.ok(eventText.includes(value),value);
+  for (const value of ['换人','黄牌','费尔南德斯']) assert.ok(eventText.includes(value),value);
   assert.doesNotMatch(eventText,/进球|点球大战|全场比分/);
   assert.equal(action(overlay,'detailTab','events').textContent,'比赛动态');
   action(overlay,'detailTab','tactics').click();
@@ -267,41 +264,31 @@ test('wheeling over substitutions and cards uses the event panel scroll boundari
   }
 });
 
-test('only a watch click records the match, repeated clicks persist once after reload and removing restores unwatched state', async t => {
-  const {document, window} = await openApp(t, home + '?view=date&date=2026-11-21', {
-    'rate90.v2.bookmarks': JSON.stringify([mainMatch])
-  });
-  const overlay = document.querySelector('#overlay');
-  const stored = () => Object.fromEntries(Object.entries(window.localStorage));
-  const before = stored();
-  action(document.querySelector('#view'), 'details', mainMatch).click();
-  await until(() => overlay.querySelector('.starters li'), 'Lineup failed to load');
-  action(overlay, 'close').click();
-  assert.deepEqual(stored(), before);
-  action(document, 'watched').click();
-  assert.equal(overlay.querySelectorAll('[data-act="removeWatched"]').length, 0);
-  action(overlay, 'close').click();
-
-  const outbound = [];
-  window.addEventListener('click', event => {
-    const link = event.target.closest('a[data-act="watch"]');
-    if (!link) return;
-    assert.equal(event.defaultPrevented, false, 'Watch navigation was canceled by the site');
-    outbound.push(link.href);
-    event.preventDefault(); // Record the destination without opening the external service.
-  });
-  for (let i = 0; i < 2; i++) action(card(document, mainMatch), 'watch').click();
-  assert.deepEqual(outbound, [migu, migu]);
-  assert.equal(overlay.open, false);
-  const reloaded = await openApp(t, window.location.href, stored());
-  action(reloaded.document, 'watched').click();
-  const history = reloaded.document.querySelector('#overlay');
-  assert.equal(history.querySelectorAll('[data-act="removeWatched"]').length, 1);
-  action(history, 'removeWatched', mainMatch).click();
-  assert.equal(history.querySelectorAll('[data-act="removeWatched"]').length, 0);
-  const again = await openApp(t, window.location.href, Object.fromEntries(Object.entries(reloaded.window.localStorage)));
-  action(again.document, 'watched').click();
-  assert.equal(again.document.querySelector('#overlay').querySelectorAll('[data-act="removeWatched"]').length, 0);
+test('language switches teams, match details and guard labels and survives a reload', async t => {
+  const {document, window} = await openApp(t, home + '?view=date&date=2026-11-21');
+  assert.equal(document.documentElement.lang,'zh-CN');
+  const route = window.location.href;
+  action(document,'lang').click();
+  assert.equal(document.documentElement.lang,'en');
+  assert.equal(window.location.href,route);
+  assert.match(visibleText(card(document,mainMatch)),/Manchester City/);
+  assert.match(visibleText(card(document,mainMatch)),/Fulham/);
+  assert.equal(document.querySelector('[data-act="watched"]'),null);
+  const saved = Object.fromEntries(Object.entries(window.localStorage));
+  const reloaded = await openApp(t, home + '?match=' + mainMatch, saved);
+  const page = reloaded.document;
+  const overlay = page.querySelector('#overlay');
+  await until(() => overlay.querySelector('.starters li'),'Expected English lineups');
+  assert.equal(page.documentElement.lang,'en');
+  assert.match(overlay.querySelector('.coach').textContent,/Enzo Maresca/);
+  assert.match(overlay.querySelector('.starters').textContent,/Rúben Dias/);
+  assert.equal(action(overlay,'detailTab','lineups').textContent,'Lineups');
+  action(overlay,'detailTab','events').click();
+  assert.equal(action(overlay,'confirmPeek','events').textContent,'Take a peek');
+  action(overlay,'close').click();
+  action(page,'lang').click();
+  assert.equal(page.documentElement.lang,'zh-CN');
+  assert.match(visibleText(page.querySelector('#view')),/曼城/);
 });
 
 test('direct-file entry supports the old top link and hash-addressed match details', async t => {
@@ -321,7 +308,7 @@ test('direct-file entry supports the old top link and hash-addressed match detai
   const linked = await openApp(t, index.href + '#view=date&date=2026-11-21&match=' + mainMatch);
   const overlay = linked.document.querySelector('#overlay');
   await until(() => overlay.open && overlay.querySelectorAll('.starters li').length === 22, 'File hash did not restore match details');
-  assert.equal(action(overlay, 'watch').href, migu);
+  assert.equal(overlay.querySelector('[data-act="watch"]'),null);
 });
 
 test('back and forward reopen the linked match; closing a direct link removes the match from the URL', async t => {

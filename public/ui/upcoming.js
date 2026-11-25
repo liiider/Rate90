@@ -2,9 +2,13 @@
   'use strict';
   const {escapeHtml:e,leagues,cnDate,roundName}=window.Rate90.catalog;
   const {crest,leagueIcon}=window.Rate90.components;
+  const i18n=window.Rate90.i18n;
+  const t=(key,vars)=>i18n ? i18n.t(key,vars) : key;
+  const teamLabel=team=>i18n ? i18n.teamName(team) : (team?.zh || team?.en || '');
+  const leagueShort=id=>i18n ? i18n.leagueName(id,'short') : (leagues[id]?.short || '');
   const stamp=t=>new Date(t+8*3600000).toISOString();
   const day=g=>stamp(g.kickoff).slice(0,10);
-  const label=g=>roundName(g.league,g.round)+(g.leg?(g.leg===1?' · 首回合':' · 次回合'):'');
+  const label=g=>roundName(g.league,g.round)+(g.leg?(' · '+(g.leg===1?t('leg1'):t('leg2'))):'');
   const gameSpan=games=>{
     const dates=games.map(day).filter(Boolean).sort();
     if (!dates.length) return '';
@@ -38,7 +42,7 @@
           scope:'round/'+r.key,
           league:r.league,
           roundLabel:label(r),
-          title:leagues[r.league].short+' · '+label(r),
+          title:leagueShort(r.league)+' · '+label(r),
           span:gameSpan(games),
           games
         };
@@ -49,12 +53,12 @@
     const d=cnDate(day(g));
     return g.timeKnown
       ? e(d)+' '+e(stamp(g.kickoff).slice(11,16))
-      : e(d)+' <span class="time-tbd">待定</span>';
+      : e(d)+' <span class="time-tbd">'+e(t('tbd'))+'</span>';
   }
 
   function view(catalog,sections,{merged=false,showLeagueIcon=false}={}) {
-    if (!sections.length) return '<p class="state-card">暂无已公布的对阵。</p>';
-    const team=t=>({...catalog.team(t.id),zh:t.zh});
+    if (!sections.length) return '<p class="state-card">'+e(t('noFixtures'))+'</p>';
+    const team=tm=>({...catalog.team(tm.id),zh:tm.zh || catalog.team(tm.id).zh});
     return sections.map(section=>{
       const byId=new Map(section.games.map(g=>[g.id,g]));
       const picks=catalog.prematch.picks;
@@ -76,7 +80,7 @@
         : '';
 
       const emptyNote=(validPicks && !record.items.length)
-        ? '<p class="preview-empty-picks"><span class="picks-spark" aria-hidden="true">✦</span><span>AI 赛前评估 · 本轮暂无全场推荐</span></p>'
+        ? '<p class="preview-empty-picks"><span class="picks-spark" aria-hidden="true">✦</span><span>'+e(t('emptyPicks'))+'</span></p>'
         : '';
 
       const listHtml='<div class="preview-list card-stack">'+ordered.map(g=>{
@@ -88,13 +92,13 @@
 
         let statusHtml='';
         if (isPrimary) {
-          statusHtml='<span class="ai-plaque is-primary" aria-label="AI 强烈推荐"><b>强烈推荐</b><small>✦ AI</small></span>';
+          statusHtml='<span class="ai-plaque is-primary" aria-label="'+e(t('aiMustWatchAria'))+'"><b>'+e(t('mustWatch'))+'</b><small>✦ AI</small></span>';
         } else if (isSecondary) {
-          statusHtml='<span class="ai-plaque is-secondary" aria-label="AI 值得一看"><b>值得一看</b><small>✦ AI</small></span>';
+          statusHtml='<span class="ai-plaque is-secondary" aria-label="'+e(t('aiWorthWatchingAria'))+'"><b>'+e(t('worthWatching'))+'</b><small>✦ AI</small></span>';
         } else if (g.leg) {
-          statusHtml='<span class="preview-leg">'+(g.leg===1?'首回合':'次回合')+'</span>';
+          statusHtml='<span class="preview-leg">'+e(g.leg===1?t('leg1'):t('leg2'))+'</span>';
         } else {
-          statusHtml='<span class="preview-upcoming-tag">未开赛</span>';
+          statusHtml='<span class="preview-upcoming-tag">'+e(t('notStarted'))+'</span>';
         }
 
         const reasonHtml=pick
@@ -107,9 +111,9 @@
             '<div class="preview-time">'+(showLeagueIcon?leagueIcon(g.league,'card-ic'):'')+
               '<time class="time-val">'+formatKickoff(g)+'</time>'+
             '</div>'+
-            '<span class="side home"><span class="team-name">'+e(home.zh)+'</span>'+crest(home,crestSize)+'</span>'+
+            '<span class="side home"><span class="team-name">'+e(teamLabel(home))+'</span>'+crest(home,crestSize)+'</span>'+
             '<span class="vs">vs</span>'+
-            '<span class="side away">'+crest(away,crestSize)+'<span class="team-name">'+e(away.zh)+'</span></span>'+
+            '<span class="side away">'+crest(away,crestSize)+'<span class="team-name">'+e(teamLabel(away))+'</span></span>'+
             '<div class="preview-status">'+statusHtml+'</div>'+
           '</div>'+
           reasonHtml+
