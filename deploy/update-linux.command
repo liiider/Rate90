@@ -10,10 +10,34 @@ stage=
 host=${RATE90_SSH_TARGET:-${1:-}}
 if [[ -z "$host" ]]; then read -r -p 'Linux SSH 地址（user@host）: ' host; fi
 [[ "$host" =~ ^[A-Za-z0-9_][A-Za-z0-9_.@-]*$ ]] || { echo 'SSH 地址无效'; exit 2; }
-opts=(-o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ServerAliveInterval=30 -o ControlMaster=auto -o ControlPersist=120 -o "ControlPath=$tmp/ssh")
+opts=(-S "$tmp/ssh" -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+connected() { ssh "${opts[@]}" -O check "$host" >/dev/null 2>&1; }
+connect() {
+  local attempt status
+  if connected; then return 0; fi
+  for attempt in 1 2 3; do
+    echo "正在连接 Linux SSH（第 $attempt/3 次）…" >&2
+    if LC_ALL=C ssh "${opts[@]}" -o ControlPersist=180 -M -fN "$host" 2>"$tmp/ssh-error"; then
+      if connected; then return 0; fi
+      echo 'SSH 连接已关闭。' >&2
+    else
+      status=$?
+      cat "$tmp/ssh-error" >&2
+      if [[ $status != 255 ]] || ! grep -Eiq 'connection (closed|reset|refused|timed out)|broken pipe|operation timed out|no route to host|network is unreachable|timeout waiting for' "$tmp/ssh-error"; then
+        return "$status"
+      fi
+    fi
+    if [[ $attempt -lt 3 ]]; then sleep "$((2 * attempt))"; fi
+  done
+  echo "SSH 连续三次未能建立连接。可在 Mac 终端运行 ssh $host 检查登录。" >&2
+  return 255
+}
 cleanup() {
-  if [[ -n "$stage" ]]; then ssh "${opts[@]}" "$host" "rm -rf -- $stage" </dev/null >/dev/null 2>&1 || true; fi
-  ssh "${opts[@]}" -O exit "$host" >/dev/null 2>&1 || true
+  local status=$?
+  if connected; then
+    if [[ -n "$stage" && $status != 255 ]]; then ssh "${opts[@]}" -o BatchMode=yes "$host" "rm -rf -- $stage" </dev/null >/dev/null 2>&1 || true; fi
+    ssh "${opts[@]}" -O exit "$host" >/dev/null 2>&1 || true
+  fi
   rm -rf "$tmp"
 }
 trap cleanup EXIT
@@ -23,17 +47,24 @@ if [[ "$code_only" == true ]]; then
   bundle="$tmp/code-update.tar.gz"
   python3 "$root/deploy/package-home.py" "$bundle" --code-update
   expected=$(shasum -a 256 "$bundle" | cut -d' ' -f1)
-  echo '正在上传程序，沿用 Linux 的数据库和快照…'
 else
   shasum -a 256 -c rate90-linux-update.sha256
   expected=$(awk '{print $1}' rate90-linux-update.sha256)
-  echo '正在连接 Linux 并传输归档与后端更新…'
 fi
 [[ "$expected" =~ ^[0-9a-f]{64}$ ]]
+connect
+echo 'SSH 已登录，正在检查 Linux 部署目录…'
 candidate=$(ssh "${opts[@]}" "$host" 'cd "$HOME" && test "$(cat Rate90/.rate90-backend)" = systemd && umask 077 && mktemp -d .rate90-update.XXXXXXXX')
 [[ "$candidate" =~ ^\.rate90-update\.[A-Za-z0-9]+$ ]]
 stage=$candidate
-ssh "${opts[@]}" "$host" "cat > $stage/update.tar.gz" < "$bundle"
+echo '正在上传更新包…'
+for attempt in 1 2 3; do
+  if ssh "${opts[@]}" "$host" "cat > $stage/update.part && mv $stage/update.part $stage/update.tar.gz" < "$bundle"; then break; else status=$?; fi
+  if [[ $status != 255 || $attempt == 3 ]]; then exit "$status"; fi
+  echo '上传连接中断，重新传送当前更新包。' >&2
+  connect
+done
+echo '上传完成，正在 Linux 校验并安装…'
 if [[ "$code_only" == true ]]; then
   ssh "${opts[@]}" "$host" "cd $stage && echo '$expected  update.tar.gz' | sha256sum -c - && tar -xzf update.tar.gz && test -f CODE_ONLY && bash home-service.sh install && bash home-service.sh publisher && cat release/REVISION" | tee "$tmp/result"
   grep -qx RATE90_COLLECTOR_OK "$tmp/result"
