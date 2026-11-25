@@ -98,6 +98,12 @@ export async function storedFeed(day,details,dir = assetDirectory) {
       combinedSources.add(round);
       combinedSources.add(collected);
     } else rows.set(card.id,selected);
+    if (details && selected !== card && card.details?.tactics) {
+      const merged=rows.get(card.id);
+      rows.set(card.id,{...merged,details:{...merged.details,tactics:card.details.tactics}});
+      combinedSources.add(round);
+      combinedSources.add(collected);
+    }
   }
   const matches = [...rows.values()].map(card => publishedCard(card,details))
     .sort((a,b) => (b.rating ?? -1)-(a.rating ?? -1) || a.kickoff.localeCompare(b.kickoff) || a.id.localeCompare(b.id));

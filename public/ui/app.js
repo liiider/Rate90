@@ -11,7 +11,8 @@
     ratingTier,
     isValidDate,
     cnDate,
-    roundName
+    roundName,
+    latestPlayedRound
   } = window.Rate90.catalog;
 
   const {
@@ -52,12 +53,31 @@
     const p = routeParams();
     const linkedMatch = catalog?.byId.get(p.get('match'));
     const requested = p.get('league');
-    const league = Object.hasOwn(leagues,requested) || requested === 'all' ? requested :
+    const league = Object.hasOwn(leagues, requested) || requested === 'all' ? requested :
       (linkedMatch?.league ?? 'all');
-    const round = catalog?.roundsByLeague[league]?.find(r => String(r) === p.get('round')) ??
-      (!requested && linkedMatch && !isValidDate(p.get('date')) ? linkedMatch.round : null);
-    const date = round == null && isValidDate(p.get('date')) ? p.get('date') : '';
-    return {league, round, date, match:p.get('match') || ''};
+    const roundChoice = p.get('round');
+    const explicitAll = roundChoice === 'all';
+    const explicitRound = !explicitAll && roundChoice != null
+      ? (catalog?.roundsByLeague[league]?.find(r => String(r) === roundChoice) ?? null)
+      : null;
+    const rawDate = isValidDate(p.get('date')) ? p.get('date') : '';
+    const future = roundChoice === 'next' || roundChoice === 'following' || p.get('view') === 'future' ||
+      (rawDate && rawDate > window.Rate90.upcoming.day({ kickoff: Date.now() }));
+    const date = !explicitAll && explicitRound == null && roundChoice !== 'next' && roundChoice !== 'following' ? rawDate : '';
+    let round = explicitRound;
+    if (!future && !explicitAll && !date && round == null) {
+      if (!requested && linkedMatch) round = linkedMatch.round;
+      else if (league !== 'all') round = latestPlayedRound(catalog, league);
+    }
+    return {
+      league,
+      round,
+      allRounds: !future && !date && explicitAll,
+      date,
+      future: Boolean(future),
+      horizon: roundChoice === 'following' || p.get('horizon') === '2' ? 2 : 1,
+      match: p.get('match') || ''
+    };
   }
 
   const state = {
@@ -71,7 +91,7 @@
   };
 
   let modal = null;
-  let detailTab = { activeTab: 'lineups', pendingTab: '' };
+  let detailTab = { activeTab: 'lineups', pendingTab: '', tacticalSide: 'home' };
   const detailSession = Math.random().toString(36).slice(2);
 
   function applyTheme() {
@@ -133,19 +153,28 @@
     renderTopBar();
     syncLeagueRail(state.route.league);
     document.title = (leagues[state.route.league]?.short ?? '全部赛事') + ' · Rate90';
+    if (state.route.future && !state.catalog.prematch && !state.previewLoading && !state.previewError) {
+      state.previewLoading=true;
+      window.Rate90.catalog.loadPrematch(state.catalog.prematchFile).then(data=>{state.catalog.prematch=data;})
+        .catch(()=>{state.previewError=true;}).finally(()=>{state.previewLoading=false;if(state.route.future) render();});
+    }
     $('view').innerHTML = roundView(state);
   }
 
   function navigate(changes) {
     const p = new URLSearchParams();
     const league = changes.league ?? state.route.league;
-    p.set('league',league);
-    const scopeOnly = changes.league != null && changes.date === undefined && changes.round === undefined;
-    const round = scopeOnly ? state.route.round : changes.round;
-    if (state.catalog.roundsByLeague[league].includes(round)) p.set('round',String(round));
-    const date = changes.date ?? (scopeOnly ? state.route.date : '');
-    if (date) p.set('date',date);
-    history.pushState(null,'',routeUrl(p));
+    p.set('league', league);
+    const date = changes.date ?? '';
+    const future = Boolean(changes.future);
+    const allRounds = Boolean(changes.allRounds);
+    const round = changes.round;
+    if (future && !date) p.set('round', (changes.horizon ?? state.route.horizon) === 2 ? 'following' : 'next');
+    else if (future && date) p.set('view', 'future');
+    else if (allRounds) p.set('round', 'all');
+    else if (state.catalog.roundsByLeague[league].includes(round)) p.set('round', String(round));
+    if (date) p.set('date', date);
+    history.pushState(null, '', routeUrl(p));
     state.route = routeFromUrl(state.catalog);
     dismissModal();
     render();
@@ -168,9 +197,11 @@
   function removeMatchFromUrl() {
     const p = routeParams();
     p.delete('match');
-    p.set('league',state.route.league);
-    if (state.route.round != null) p.set('round',String(state.route.round));
-    history.replaceState(null,'',routeUrl(p));
+    p.set('league', state.route.league);
+    if (state.route.future && !state.route.date) p.set('round', state.route.horizon === 2 ? 'following' : 'next');
+    else if (state.route.allRounds) p.set('round', 'all');
+    else if (state.route.round != null) p.set('round', String(state.route.round));
+    history.replaceState(null, '', routeUrl(p));
     state.route = routeFromUrl(state.catalog);
   }
 
@@ -189,8 +220,10 @@
     const m = state.catalog.byId.get(id);
     if (!m) return;
     const p = routeParams();
-    p.set('league',state.route.league);
-    if (state.route.round != null) p.set('round',String(state.route.round));
+    p.set('league', state.route.league);
+    if (state.route.future && !state.route.date) p.set('round', state.route.horizon === 2 ? 'following' : 'next');
+    else if (state.route.allRounds) p.set('round', 'all');
+    else if (state.route.round != null) p.set('round', String(state.route.round));
     p.set('match', m.id);
     history.pushState({ rate90Detail: detailSession }, '', routeUrl(p));
     state.route = routeFromUrl(state.catalog);
@@ -202,7 +235,7 @@
       removeMatchFromUrl();
     }
     modal = { type, id };
-    if (type === 'details') detailTab = { activeTab: 'lineups', pendingTab: '' };
+    if (type === 'details') detailTab = { activeTab: 'lineups', pendingTab: '', tacticalSide: 'home' };
     dialog.dataset.view = type;
     renderModal();
     dialog.scrollTop = 0;
@@ -290,7 +323,7 @@
     if (!state.catalog) return;
     const previous = state.route;
     state.route = routeFromUrl(state.catalog);
-    const listChanged = force || ['league', 'round', 'date'].some(key => previous[key] !== state.route[key]);
+    const listChanged = force || ['league', 'round', 'allRounds', 'date', 'future', 'horizon'].some(key => previous[key] !== state.route[key]);
     if (listChanged) render();
     const selected = state.catalog.byId.get(state.route.match);
     if (selected) openModal('details', selected.id);
@@ -427,6 +460,12 @@
       const next = Number.isFinite(m.rating) ? (m.rating >= 8 ? 3 : 2) : 1;
       if (!cur || next > cur) map.set(m.date, next);
     }
+    const feed=state.catalog.prematch;
+    const today=window.Rate90.upcoming.day({kickoff:Date.now()});
+    if (feed) for (const g of [...feed.rounds.flatMap(r=>r.games),...(feed.extra||[])]) {
+      const date=window.Rate90.upcoming.day(g);
+      if ((league==='all' || league===g.league) && !map.has(date)) map.set(date, date > today ? 4 : 1);
+    }
     return map;
   }
 
@@ -437,9 +476,30 @@
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
   }
 
+  function closeRoundMenu() {
+    const pop = $('round-popover');
+    if (pop) pop.hidden = true;
+    const trigger = $('round-trigger');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleRoundMenu() {
+    const pop = $('round-popover');
+    const trigger = $('round-trigger');
+    if (!pop || !trigger) return;
+    const willOpen = pop.hidden;
+    if (!willOpen) { closeRoundMenu(); return; }
+    closeCalendar();
+    pop.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    const target = pop.querySelector('.round-opt.is-selected');
+    target?.scrollIntoView?.({ block: 'nearest' });
+  }
+
   function renderCalendar(year, month) {
     const pop = $('cal-popover');
     if (!pop || !state.catalog) return;
+    pop.dataset.ym = year + '-' + month;
     const tiers = matchDayTiers(state.route.league);
     const selected = state.route.date;
     const first = new Date(Date.UTC(year, month, 1));
@@ -455,9 +515,9 @@
     for (let d = 1; d <= daysInMonth; d++) {
       const ymd = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
       const tier = tiers.get(ymd) || 0;
-      const cls = ['cal-day', tier === 3 ? 'is-high' : tier === 2 ? 'is-rated' : tier === 1 ? 'is-scheduled' : 'is-rest',
+      const cls = ['cal-day', tier === 4 ? 'is-future' : tier === 3 ? 'is-high' : tier === 2 ? 'is-rated' : tier === 1 ? 'is-scheduled' : 'is-rest',
         ymd === selected ? 'is-selected' : ''].filter(Boolean).join(' ');
-      const title = tier === 3 ? '含 8.0+ 高分比赛' : tier === 2 ? '有已评分比赛' : tier === 1 ? '有赛程，暂无评分' : '无比赛日';
+      const title = tier === 4 ? '未来赛程' : tier === 3 ? '含 8.0+ 高分比赛' : tier === 2 ? '有已评分比赛' : tier === 1 ? '有赛程，暂无评分' : '无比赛日';
       cells.push('<button type="button" class="' + cls + '" data-act="pickDate" data-val="' + ymd + '" title="' + ymd + ' · ' + title + '">' +
         '<span>' + d + '</span>' + (tier ? '<i class="cal-dot" aria-hidden="true"></i>' : '') + '</button>');
     }
@@ -473,7 +533,7 @@
       '<div class="cal-foot">' +
         '<span class="cal-legend"><i class="cal-swatch high"></i>8.0+</span>' +
         '<span class="cal-legend"><i class="cal-swatch rated"></i>已评</span>' +
-        '<span class="cal-legend"><i class="cal-swatch sched"></i>暂无评分</span>' +
+        '<span class="cal-legend"><i class="cal-swatch future"></i>未来</span>' +
         (selected ? '<button type="button" class="cal-clear" data-act="clearDate">清除</button>' : '') +
       '</div>';
   }
@@ -484,11 +544,22 @@
     if (!pop || !trigger) return;
     const willOpen = pop.hidden;
     if (!willOpen) { closeCalendar(); return; }
+    closeRoundMenu();
     const seed = state.route.date || state.catalog.defaultMatchDate || new Date().toISOString().slice(0, 10);
     const [y, m] = seed.split('-').map(Number);
     renderCalendar(y, m - 1);
     pop.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
+    if (state.catalog.prematchFile && !state.catalog.prematch && !state.previewLoading) {
+      state.previewLoading = true;
+      window.Rate90.catalog.loadPrematch(state.catalog.prematchFile).then(data => {
+        state.catalog.prematch = data;
+        if (!pop.hidden && pop.dataset.ym) {
+          const [cy, cm] = pop.dataset.ym.split('-').map(Number);
+          renderCalendar(cy, cm);
+        }
+      }).catch(() => {}).finally(() => { state.previewLoading = false; });
+    }
   }
 
   document.addEventListener('error', ev => {
@@ -502,15 +573,22 @@
   }, true);
 
   document.addEventListener('keydown', ev => {
-    if (ev.key === 'Escape' && $('cal-popover')?.hidden === false) {
-      closeCalendar();
-      document.querySelector('[data-act="toggleCal"]')?.focus();
+    if (ev.key === 'Escape') {
+      if ($('round-popover')?.hidden === false) {
+        closeRoundMenu();
+        $('round-trigger')?.focus();
+      } else if ($('cal-popover')?.hidden === false) {
+        closeCalendar();
+        document.querySelector('[data-act="toggleCal"]')?.focus();
+      }
     }
   });
 
   document.addEventListener('click', async ev => {
     const pop = $('cal-popover');
     if (pop && !pop.hidden && !ev.target.closest('.date-picker-wrap')) closeCalendar();
+    const rpop = $('round-popover');
+    if (rpop && !rpop.hidden && !ev.target.closest('.round-jump')) closeRoundMenu();
     const btn = ev.target.closest('[data-act]');
     if (!btn) return;
     const { act, val } = btn.dataset;
@@ -523,15 +601,25 @@
         break;
       case 'home':
         ev.preventDefault();
-        navigate({league:'all',date:''});
+        navigate({ league: 'all', round: null, allRounds: false, date: '', future: false });
         break;
       case 'league':
-        navigate({league:val});
+        navigate({ league: val, round: null, allRounds: false, date: '', future: false });
+        break;
+      case 'retryPreview':
+        state.previewError=false;
+        render();
+        break;
+      case 'toggleRoundMenu':
+        toggleRoundMenu();
+        break;
+      case 'pickRound':
+        closeRoundMenu();
+        chooseRound(val, 'round-trigger');
         break;
       case 'prevRound':
       case 'nextRound': {
-        const target = state.catalog.roundsByLeague[state.route.league].find(r => String(r) === val);
-        if (target != null) navigate({round:target,focus:'round-picker'});
+        chooseRound(val, 'round-trigger');
         break;
       }
       case 'toggleCal':
@@ -562,24 +650,32 @@
         break;
       case 'detailTab':
         if (modal?.type === 'details') {
-          if (val === 'lineups' || val === 'substitutes' || state.peeked.has(modal.id)) {
-            detailTab = { activeTab: val, pendingTab: '' };
+          if (val === 'lineups' || val === 'substitutes' || state.peeked.has(modal.id + '/' + val)) {
+            detailTab = { ...detailTab, activeTab: val, pendingTab: '' };
           } else {
-            detailTab = { activeTab: detailTab.activeTab, pendingTab: val };
+            detailTab = { ...detailTab, pendingTab: val };
           }
           refreshFacts(modal.id, true);
         }
         break;
       case 'confirmPeek':
-        if (modal?.type === 'details' && val) {
-          state.peeked.add(modal.id);
-          detailTab = { activeTab: val, pendingTab: '' };
+        if (modal?.type === 'details' && val === detailTab.pendingTab && ['stats','events','tactics'].includes(val)) {
+          state.peeked.add(modal.id + '/' + val);
+          detailTab = { ...detailTab, activeTab: val, pendingTab: '' };
           refreshFacts(modal.id, true);
+        }
+        break;
+      case 'tacticalSide':
+        if (modal?.type === 'details' && detailTab.activeTab === 'tactics' && !detailTab.pendingTab &&
+            (val === 'home' || val === 'away')) {
+          detailTab.tacticalSide = val;
+          refreshFacts(modal.id);
+          $('match-facts').querySelector('[data-act="tacticalSide"][aria-pressed="true"]')?.focus();
         }
         break;
       case 'cancelPeek':
         if (modal?.type === 'details') {
-          detailTab = { activeTab: detailTab.activeTab, pendingTab: '' };
+          detailTab = { ...detailTab, pendingTab: '' };
           refreshFacts(modal.id, true);
         }
         break;
@@ -607,13 +703,27 @@
     }
   });
 
-  document.addEventListener('change', ev => {
-    if (ev.target.id === 'date-picker' && (!ev.target.value || isValidDate(ev.target.value))) {
-      navigate({date:ev.target.value,focus:'date-picker'});
-    } else if (ev.target.id === 'round-picker') {
-      const round = state.catalog.roundsByLeague[state.route.league].find(r => String(r) === ev.target.value);
-      if (round != null || ev.target.value === 'all') navigate({round,focus:'round-picker'});
+  function chooseRound(value, focus = 'round-picker') {
+    if (value === 'next' || value === 'following') {
+      navigate({ future: true, horizon: value === 'following' ? 2 : 1, focus });
+      return;
     }
+    if (value === 'all') {
+      navigate({ allRounds: true, round: null, focus });
+      return;
+    }
+    if (value === 'current') {
+      navigate({ allRounds: false, round: null, focus });
+      return;
+    }
+    const round = state.catalog.roundsByLeague[state.route.league].find(r => String(r) === value);
+    if (round != null) navigate({ round, allRounds: false, focus });
+  }
+
+  document.addEventListener('change', ev => {
+    if (ev.target.id==='date-picker' && (!ev.target.value || isValidDate(ev.target.value))) {
+      navigate({date:ev.target.value,focus:'date-picker'});
+    } else if (ev.target.id==='round-picker') chooseRound(ev.target.value);
   });
 
   document.addEventListener('auxclick', ev => {
@@ -631,6 +741,13 @@
     state.catalog = await loadCatalog();
     state.watched = readWatched([]);
     restoreRoute(true);
+    if (state.catalog.prematchFile && !state.catalog.prematch && !state.previewLoading) {
+      state.previewLoading = true;
+      window.Rate90.catalog.loadPrematch(state.catalog.prematchFile).then(data => {
+        state.catalog.prematch = data;
+        render();
+      }).catch(() => {}).finally(() => { state.previewLoading = false; });
+    }
   } catch {
     $('view').innerHTML = '<div class="state-card">比赛数据加载失败，请刷新页面重试。</div>';
   }

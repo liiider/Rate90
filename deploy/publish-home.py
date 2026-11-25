@@ -38,6 +38,11 @@ def parse_index(data):
 
 
 def active_files(index):
+    if 'prematchFile' in index:
+        stem = index['prematchFile']
+        if not re.fullmatch(r'prematch-[0-9a-f]{20}', stem):
+            raise ValueError('无效的赛前快照文件名')
+        yield stem + '.js'
     for day, entry in index['days'].items():
         stem = entry['file']
         match = DAY_FILE.fullmatch(stem)
@@ -127,14 +132,19 @@ class Publisher:
         if remote_digest != digest:
             if remote_digest:
                 previous = parse_index(self.git('cat-file', 'blob', remote_digest))
+                old_rule, new_rule = previous.get('ruleVersion'), index.get('ruleVersion')
+                # Authorize this release's scoring migration, keeping downgrade and data checks.
                 if (index['updatedAt'] < previous['updatedAt'] or
-                    previous.get('ruleVersion') != index.get('ruleVersion') or
+                    (old_rule != new_rule and (old_rule, new_rule) != ('rate90-1.1.0', 'rate90-1.2.0')) or
                     not {f['id'] for f in previous['fixtures']}.issubset(f['id'] for f in index['fixtures'])):
                     raise ValueError('服务器快照未追上正式站的版本、赛程或采集时间，等待下一次采集')
             for name in [*active_files(index), INDEX]:
                 content = data if name == INDEX else (self.data / name).read_bytes()
                 path = ASSET + name
                 sha = git_blob(content)
+                if name.startswith('prematch-') and (not content.startswith(PREFIX) or not content.endswith(b';\n') or
+                        hashlib.sha256(content[len(PREFIX):-2]).hexdigest()[:20] != name[9:-3]):
+                    raise ValueError('赛前快照校验失败')
                 if existing.get(path) != sha:
                     stored = self.git('hash-object', '-w', '--stdin', data=content).decode().strip()
                     if stored != sha:

@@ -5,6 +5,7 @@ import {beijingDate, LEAGUES, summarize} from './bsd.mjs';
 import {DAY, getMeta} from './collector.mjs';
 import {assetDirectory, atomicAsset, isFinishedFixture, optionalIndex, readAsset} from './collected-feed.mjs';
 import {formatFeed, rateMatch, ruleVersion} from './recommend.mjs';
+import {tacticalFixture} from './tactical-review.mjs';
 
 const codes = {1:'pl',3:'ll',4:'sa',5:'bl',6:'l1',7:'cl'};
 const viewDay = time => beijingDate(new Date(time + 12 * 3600000));
@@ -24,7 +25,7 @@ export async function loadBaseline(dir = assetDirectory) {
 
 export async function publishCollected(db,base,dir = assetDirectory) {
   const scans = [...LEAGUES.keys()].map(id => Number(getMeta(db,'calendar:'+id+':at')) || 0);
-  const revision = ['round-reasons-v3', ruleVersion, getMeta(db,'revision') ?? '0', ...scans].join('/');
+  const revision = ['round-reasons-v3-tactics1', ruleVersion, getMeta(db,'revision') ?? '0', ...scans].join('/');
   const previous = await optionalIndex(dir,'collected-index');
   if (previous?.revision === revision) return;
   const rows = db.prepare('SELECT id,fixture,facts,fetched_at,observed_at,styles_at,phase FROM games WHERE fixture IS NOT NULL ORDER BY id').all();
@@ -33,11 +34,12 @@ export async function publishCollected(db,base,dir = assetDirectory) {
   const updatedAt = new Date(latest).toISOString();
   const covered = new Set(db.prepare('SELECT day FROM calendar_days GROUP BY day HAVING COUNT(*)=? ORDER BY day')
     .all(LEAGUES.size).map(r => r.day));
-  const index = {revision,updatedAt,coveredDays:[...covered],days:{},fixtures:[]};
+  const index = {revision,updatedAt,...(previous?.prematchFile ? {prematchFile:previous.prematchFile} : {}),coveredDays:[...covered],days:{},fixtures:[]};
   const teams = new Map(base.teams.map(t => [teamKey(t.en),t.id]));
   const byId = new Map(base.fixtures.map(m => [m.id,m]));
   const sampleById = new Map(base.sample.matches.map(m=>[m.id,m]));
   const dayGroups = new Map(), dayTimes = new Map();
+  const reviews = db.prepare('SELECT side,result FROM tactical_reviews WHERE game_id=? AND result IS NOT NULL');
   for (const row of rows) {
     const id = String(row.id), f = JSON.parse(row.fixture), league = codes[f.league];
     const home = teams.get(teamKey(f.home)) ?? f.home, away = teams.get(teamKey(f.away)) ?? f.away;
@@ -67,6 +69,12 @@ export async function publishCollected(db,base,dir = assetDirectory) {
     const match = observedRating === null && sample ? {
       ...sample,kickoff:summary.kickoff,incidentReasons:summary.incidentReasons,matchDetail:summary.matchDetail,styleStats:summary.styleStats
     } : summary;
+    if (tacticalFixture(f)) {
+      const tactics={home:null,away:null};
+      for (const entry of reviews.all(row.id)) tactics[entry.side]=JSON.parse(entry.result);
+      match.matchDetail={...match.matchDetail,tactics};
+      fixture.tacticalCoverage=true;
+    }
     // Keep derived archive ratings out of the fresh-observation index.
     fixture.rating = observedRating;
     fixture.day = day;

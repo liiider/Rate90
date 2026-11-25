@@ -69,6 +69,7 @@
     // Base fixtures supply the schedule. Only a Rate90 snapshot can supply a rating.
     const rows = new Map(fixtures.map(f => [f.id, {...f, rating:null}]));
     const detailFiles = new Map();
+    const tacticalFiles = new Map();
     const earlier = (a, b) => Date.parse(a) < Date.parse(b);
 
     function mergeFixture(fixture, dayFiles) {
@@ -118,7 +119,15 @@
       const previous = rows.get(id);
       mergeFixture({...previous, observedAt:snapshot.updatedAt, ...rating, status:'finished'}, snapshot.days?.[rating.day]);
     }
-    for (const fixture of collected.fixtures) mergeFixture(fixture, collected.days[fixture.day]);
+    for (const fixture of collected.fixtures) {
+      const dayFiles = collected.days[fixture.day];
+      mergeFixture(fixture, dayFiles);
+      const merged = rows.get(String(fixture.id));
+      if (fixture.tacticalCoverage && dayFiles?.file && merged?.status === 'finished' &&
+          merged.date === fixture.date && merged.time === fixture.time && !merged.replacedBy) {
+        tacticalFiles.set(String(fixture.id), dayFiles.file);
+      }
+    }
 
     // Providers sometimes assign a new ID when a postponed game is played.
     const fixtureKey = m => {
@@ -165,25 +174,31 @@
     const defaultMatchDate = matches.filter(m => Number.isFinite(m.rating)).map(m => m.date).sort().at(-1) ?? availableDates.at(-1) ?? '';
     const times = [snapshot.updatedAt, collected.updatedAt].map(t => Date.parse(t)).filter(Number.isFinite);
     const capturedAt = times.length ? new Date(Math.max(...times)).toISOString() : null;
-    return {teams:[...teamById.values()], team, matches, byId, groups, roundsByLeague, availableDates, defaultMatchDate, capturedAt, detailFiles};
+    return {prematchFile:collected.prematchFile,teams:[...teamById.values()], team, matches, byId, groups, roundsByLeague, availableDates, defaultMatchDate, capturedAt, detailFiles, tacticalFiles};
   }
 
   const detailSetCache = new Map();
 
-  async function loadMatchDetails(matchId) {
-    const {byId, detailFiles} = await (catalogPending ?? loadCatalog());
-    const match = byId.get(String(matchId));
-    const file = match && detailFiles.get(match.id);
-    if (!file) return null;
+  function detailsIn(file) {
     if (!detailSetCache.has(file)) {
       const pending = asset(file).then(feed => new Map(feed.matches.map(m => [String(m.id), m.details])));
       detailSetCache.set(file, pending);
       pending.catch(() => detailSetCache.delete(file));
     }
-    const details = (await detailSetCache.get(file)).get(match.id);
-    if (!details) return null;
-    const {lineups, stats, pressure, events} = details;
-    return lineups || stats || pressure || events ? {lineups, stats, pressure, events} : null;
+    return detailSetCache.get(file);
+  }
+
+  async function loadMatchDetails(matchId) {
+    const {byId, detailFiles, tacticalFiles} = await (catalogPending ?? loadCatalog());
+    const match = byId.get(String(matchId));
+    const file = match && detailFiles.get(match.id);
+    if (!file) return null;
+    const [cards, tacticalCards] = await Promise.all([detailsIn(file),detailsIn(tacticalFiles.get(match.id) || file)]);
+    const detail = cards.get(match.id);
+    const tactics = tacticalCards.get(match.id)?.tactics;
+    if (!detail && !tactics) return null;
+    const {lineups, stats, pressure, events} = detail || {};
+    return lineups || stats || pressure || events || tactics ? {lineups, stats, pressure, events, tactics} : null;
   }
 
   function ratingTier(value) {
@@ -248,6 +263,15 @@
     if (key === 'playoff round') return '资格赛附加赛';
     return Object.hasOwn(labels,key) ? labels[key] : (round || '轮次待定');
   }
+  function latestPlayedRound(catalog, league) {
+    const rounds = catalog?.roundsByLeague?.[league];
+    if (!rounds?.length) return null;
+    const byRound = catalog.groups?.get(league);
+    if (!byRound) return rounds.at(-1) ?? null;
+    const isPlayed = m => m.status === 'finished' || (m.status == null && Number.isFinite(m.rating));
+    return [...rounds].reverse().find(v => byRound.get(v)?.some(isPlayed)) ?? rounds.at(-1) ?? null;
+  }
+
   window.Rate90.catalog = {
     leagues,
     escapeHtml,
@@ -255,6 +279,7 @@
     writeStore,
     loadCatalog,
     loadMatchDetails,
+    loadPrematch:name=>/^prematch-[0-9a-f]{20}$/.test(name) ? asset(name) : Promise.resolve({rounds:[],picks:{}}),
     ratingTier,
     isValidDate,
     cnDate,
@@ -262,6 +287,7 @@
     tagCount,
     sortMatches,
     pickHeroIds,
-    roundName
+    roundName,
+    latestPlayedRound
   };
 })();

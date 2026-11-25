@@ -17,6 +17,15 @@ export function openQueue(filename) {
     CREATE INDEX IF NOT EXISTS due_jobs ON games(phase,due);
     CREATE TABLE IF NOT EXISTS calendar_days (day TEXT, league INTEGER, PRIMARY KEY(day,league));
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY,value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS tactical_reviews (
+      game_id INTEGER NOT NULL, side TEXT NOT NULL CHECK(side IN ('home','away')),
+      result TEXT, model TEXT, prompt_version TEXT, usage TEXT, retry_at INTEGER NOT NULL,
+      PRIMARY KEY(game_id,side)
+    );
+    CREATE TRIGGER IF NOT EXISTS tactics_finished AFTER UPDATE OF result ON tactical_reviews
+      WHEN NEW.result IS NOT NULL AND OLD.result IS NOT NEW.result BEGIN
+      INSERT INTO meta VALUES ('revision',1) ON CONFLICT(key) DO UPDATE SET value=value+1;
+    END;
     CREATE TRIGGER IF NOT EXISTS fixture_added AFTER INSERT ON games WHEN NEW.fixture IS NOT NULL BEGIN
       INSERT INTO meta VALUES ('revision',1) ON CONFLICT(key) DO UPDATE SET value=value+1;
     END;
@@ -113,7 +122,7 @@ function observe(db, event, now) {
   }
 }
 
-const detailKeys = ['lineups','home_coach','away_coach','live_stats'];
+const detailKeys = ['lineups','home_coach','away_coach','live_stats','average_positions'];
 const factKeys = ['id','league','event_date','home_team','away_team','home_score','away_score','period',
   'extra_time_score','penalty_shootout','shotmap','incidents','momentum',...detailKeys];
 
@@ -191,6 +200,49 @@ function saveDetail(db, event, row, now) {
   else if (!valid && row.phase !== 'last') { phase = 'last'; due = Math.max(now,first + DAY); }
   db.prepare('UPDATE games SET phase=?,due=?,facts=?,first_at=?,fetched_at=?,styles_at=? WHERE id=?')
     .run(phase,due,serialized,first,keepOld ? current.fetched_at : now,stylesAt,row.id);
+}
+
+// Replay the latest full BSD observation per match through the same projection as live data.
+export function importArchivedEvents(db, archive, after = 0) {
+  const rows = archive.prepare(`SELECT c.path,c.observed_at,b.json FROM
+    (SELECT path,max(observed_at) AS observed_at FROM captures
+     WHERE path GLOB '/api/events/[0-9]*/[?]full=true' AND observed_at>? GROUP BY path) c
+    JOIN captures USING(path,observed_at) JOIN bodies b USING(hash) ORDER BY c.path`);
+  const existing = db.prepare('SELECT * FROM games WHERE id=?');
+  const restoreFixture = db.prepare('UPDATE games SET fixture=?,observed_at=? WHERE id=?');
+  const restoreReview = db.prepare('UPDATE games SET phase=?,due=? WHERE id=?');
+  const report = {finished:0, imported:0, retained:0, through:after};
+  transaction(db, () => {
+    for (const capture of rows.iterate(after)) {
+      const event = JSON.parse(capture.json);
+      if (capture.path !== '/api/events/'+event.id+'/?full=true') throw Error('归档比赛 ID 不符');
+      const at = capture.observed_at, fixture = fixtureOf(event);
+      report.through = Math.max(report.through,at);
+      const finished = fixture.status === 'finished';
+      if (finished) report.finished++;
+      const row = existing.get(event.id);
+      const newerFixture = row?.fixture && row.observed_at >= at;
+      const previous = newerFixture && JSON.parse(row.fixture);
+      if ((row?.fetched_at >= at) || (newerFixture && (!finished || previous.status !== fixture.status ||
+          previous.kickoff !== fixture.kickoff || previous.replacedBy))) {
+        report.retained++;
+        continue;
+      }
+      if (finished) {
+        if (at - fixture.kickoff < firstCheck && row?.facts) { report.retained++; continue; }
+        const historical = at - fixture.kickoff >= DAY;
+        saveDetail(db,event,{id:event.id,phase:historical ? 'backfill' : row?.phase},at);
+        if (historical && at - fixture.kickoff >= DAY + firstCheck) {
+          db.prepare("UPDATE games SET phase='done', due=NULL WHERE id=? AND facts IS NOT NULL").run(event.id);
+        } else if (row?.due > at && ['review','last'].includes(row.phase)) {
+          restoreReview.run(row.phase,row.due,event.id);
+        }
+        if (newerFixture) restoreFixture.run(row.fixture,row.observed_at,event.id);
+      } else observe(db,event,at);
+      report.imported++;
+    }
+  });
+  return report;
 }
 
 function calendarWindow(now) {

@@ -80,7 +80,8 @@ export function storedMatchDetail(detail, legacyPressure) {
     } : null,
     stats:matchStats(detail?.stats),
     pressure:Array.isArray(trace) && trace.length === 90 && trace.some(Number.isFinite) ? trace.map(number) : null,
-    events:matchEvents(detail?.events)
+    events:matchEvents(detail?.events),
+    ...(detail?.tactics ? {tactics:detail.tactics} : {})
   };
 }
 

@@ -2,7 +2,7 @@ import {validScore} from './shot-profile.mjs';
 import {matchStyles} from './style-tags.mjs';
 import {publicMatchDetail} from './match-detail.mjs';
 
-export const ruleVersion = 'rate90-1.1.0';
+export const ruleVersion = 'rate90-1.2.0';
 const weights = Object.freeze({threat:25, tempo:15, continuity:20, exchanges:15, highlights:10, suspense:15});
 const sum = values => values.reduce((a, b) => a + b, 0);
 const scaled = (value, full) => Math.min(1, Math.max(0, value / full));
@@ -50,7 +50,8 @@ function suspense(match, chanceCount, lateCount, detailed) {
     timeline.closeMinutes <= 90 && timeline.lateCloseMinutes <= Math.min(15, timeline.closeMinutes)) {
     const turns = scaled(timeline.equalizers + timeline.leadReversals, 3);
     const lateThreat = late * timeline.lateCloseMinutes / 15;
-    const value = 0.65 * timeline.closeMinutes / 90 +
+    const unanswered = match.shotEvidence.responses?.unansweredMinutes ?? 0;
+    const value = 0.65 * Math.max(0, timeline.closeMinutes - unanswered) / 90 +
       0.35 * Math.max(turns, scaled(timeline.lateSwingGoals, 1), lateThreat);
     return {value:activity * value, method:'verified-goal-timeline'};
   }
@@ -100,6 +101,14 @@ export function rateMatch(match) {
     longestGap += scenario.share * (scenario.longestGap ?? 0);
     lateThreats += scenario.share * scenario.lateThreats;
   }
+  const responses = evidence?.responses;
+  if (responses?.unansweredMinutes) signals.exchanges *= 1 - 0.5 * responses.unansweredMinutes / 90;
+  // Recovering a multi-goal deficit is also evidence of an exchange, even
+  // when it takes the teams different halves to answer each other.
+  if (responses?.recoveredDeficit >= 2) {
+    const repeated = responses.bothEqualized || responses.lateCounter;
+    signals.exchanges = Math.max(signals.exchanges, repeated ? 1 : 0.8);
+  }
   const moments = highlights(match, chanceCount);
   const drama = suspense(match, weightedChances, lateThreats, Boolean(evidence?.scenarios));
   // Integer tenths on the 100-point scale make rounding reproducible, including ties.
@@ -111,7 +120,7 @@ export function rateMatch(match) {
     components[key] = {weight, points:earned / 10};
   }
   const rating = Math.round(tenths / 10) / 10;
-  const recommendation = rating >= 8 ? '看全场' : rating >= 4.5 ? '看集锦' : '可跳过';
+  const recommendation = rating >= 8 ? '看全场' : rating >= 4.5 || evidence?.highlightSequence ? '看集锦' : '可跳过';
   return {rating, recommendation, analysis:{
     components, shotCount, chanceCount, weightedChanceCount:Number(weightedChances.toFixed(3)),
     longestGapMinutes:evidence?.scenarios ? Number(longestGap.toFixed(2)) : null,
@@ -130,7 +139,7 @@ export function formatFeed(feed, includeDetails = false) {
     a.match.kickoff.localeCompare(b.match.kickoff) || a.match.id.localeCompare(b.match.id));
   return {...meta, ruleVersion, matches:rated.map(({match, rating, recommendation}, index) => {
     const {id, stage, kickoff, home, away} = match;
-    const card = {id, stage, kickoff, home, away, rating, recommendation, viewing:matchStyles(match), topPick:index === 0 && recommendation === '看全场'};
+    const card = {id, stage, kickoff, home, away, rating, recommendation, viewing:matchStyles(match, rating), topPick:index === 0 && recommendation === '看全场'};
     return includeDetails ? {...card, details:publicMatchDetail(match)} : card;
   })};
 }

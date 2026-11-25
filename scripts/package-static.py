@@ -18,6 +18,11 @@ def published_day_files():
         if not text.startswith(PREFIX) or not text.endswith(";"):
             raise ValueError(f"无效的公开索引 {name}")
         index = json.loads(text[len(PREFIX):-1])
+        if "prematchFile" in index:
+            path = DATA / (index["prematchFile"] + ".js")
+            if not path.is_file():
+                raise FileNotFoundError(path)
+            selected.add(path)
         for entry in index["days"].values():
             for key in ("file", "previewFile"):
                 if entry.get(key):
@@ -38,6 +43,8 @@ def package():
             for source in sorted(PUBLIC.rglob("*")):
                 rel = source.relative_to(PUBLIC)
                 if not source.is_file() or any(p.startswith(".") for p in rel.parts):
+                    continue
+                if source.name.startswith("prematch-") and source.parent == DATA and source not in days:
                     continue
                 if rel.parts[:3] in (("ui", "data", "rounds"), ("ui", "data", "collected")) and source not in days:
                     continue

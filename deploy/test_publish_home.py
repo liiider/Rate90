@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -45,8 +46,8 @@ class PublicationTest(unittest.TestCase):
         (self.data / 'collected/stale.js').write_text('unused')
         self.head = lambda: cmd('--git-dir', str(self.remote), 'rev-parse', 'main')
 
-    def write(self, generation):
-        index = dict(ruleVersion='1', updatedAt=f'2026-11-{generation:02}T00:00:00Z',
+    def write(self, generation, rule='1'):
+        index = dict(ruleVersion=rule, updatedAt=f'2026-11-{generation:02}T00:00:00Z',
                      fixtures=[{'id':'1'}], days={'2026-11-23':dict(file=self.stem, previewFile=self.stem+'-preview')})
         raw = pub.PREFIX + json.dumps(index).encode() + b';\n'
         (self.data/pub.INDEX).write_bytes(raw)
@@ -74,6 +75,24 @@ class PublicationTest(unittest.TestCase):
         self.publisher.online = lambda _: self.fail('unchanged snapshot contacted production')
         self.assertTrue(self.publisher.deploy())
 
+    def test_prematch_only_update(self):
+        self.publisher.deploy()
+        head = self.head()
+        index = pub.parse_index((self.data / pub.INDEX).read_bytes())
+        payload = b'{"rounds":[],"picks":{}}'
+        name = 'prematch-' + hashlib.sha256(payload).hexdigest()[:20]
+        index['prematchFile'] = name
+        (self.data / pub.INDEX).write_bytes(pub.PREFIX + json.dumps(index).encode() + b';\n')
+        asset = self.data / (name + '.js')
+        asset.write_bytes(pub.PREFIX + b'{};\n')
+        with self.assertRaises(ValueError):
+            self.publisher.deploy()
+        self.assertEqual(self.head(), head)
+        asset.write_bytes(pub.PREFIX + payload + b';\n')
+        self.publisher.deploy()
+        self.assertEqual(cmd('--git-dir', str(self.remote), 'show', 'main:' + pub.ASSET + asset.name),
+                         asset.read_text().strip())
+
     def test_missing_data_and_stale_seed_do_not_replace_main(self):
         self.write(3)
         self.publisher.deploy()
@@ -89,6 +108,20 @@ class PublicationTest(unittest.TestCase):
         (self.data/(self.stem+'.js')).write_text('day detail')
         self.publisher.deploy()
         self.assertNotEqual(self.head(), head)
+
+    def test_scoring_upgrade_accepts_current_data_and_rejects_rollback(self):
+        self.write(3, 'rate90-1.1.0')
+        self.publisher.deploy()
+        self.write(2, 'rate90-1.2.0')
+        with self.assertRaises(ValueError):
+            self.publisher.deploy()
+        self.write(3, 'rate90-1.2.0')
+        self.publisher.deploy()
+        head = self.head()
+        self.write(4, 'rate90-1.1.0')
+        with self.assertRaises(ValueError):
+            self.publisher.deploy()
+        self.assertEqual(self.head(), head)
 
     def test_non_fast_forward_keeps_the_other_commit_and_retries(self):
         old = self.head()
