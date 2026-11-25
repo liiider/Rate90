@@ -22,6 +22,22 @@ function answer(ctx) {
   return {side:ctx.targetSide,score:7.5,nodes:['XI','E0','FT'].map(id=>({
     from:id,to:id,analysis:ctx.targetSide+' analysis',comment:'教练点评'}))};
 }
+test('tactical reviews send the JSON instruction and match data in a Responses user message',async t=>{
+  const db=openQueue(':memory:');t.after(()=>db.close());
+  db.prepare("INSERT INTO games(id,fixture,facts,phase,fetched_at) VALUES(?,?,?,'done',?)")
+    .run(12,JSON.stringify(fixture),JSON.stringify(facts),now);
+  t.mock.method(globalThis,'fetch',async(url,options)=>{
+    const {input,text}=JSON.parse(options.body);
+    assert.equal(text.format.type,'json_object');
+    assert.equal(input[0].role,'user');
+    assert.match(input[0].content[0].text,/\bJSON\b/);
+    const ctx=JSON.parse(input[0].content[1].text);
+    return Response.json({output:[{content:[{type:'output_text',text:JSON.stringify(answer(ctx))}]}]});
+  });
+  const report=await generateTactics(db,base,{ai:{model:'test',key:'test',url:'https://example.invalid/v1/responses'},now,limit:1});
+  assert.deepEqual(report.errors,[]);
+  assert.equal(report.generated,1);
+});
 test('rollout includes completed games of launch rounds and excludes older rounds even when postponed',()=>{
   for (const [league,round] of [[1,11],[3,13],[4,12],[5,10],[6,11],[7,5]]) {
     assert.ok(tacticalFixture({...fixture,league,round}));

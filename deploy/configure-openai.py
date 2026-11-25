@@ -34,7 +34,10 @@ active_module = app / "server/prematch-ai.mjs"
 source_module = args.ai_module.resolve() if args.ai_module else active_module
 candidate_code = source_module.read_bytes()
 previous_code = active_module.read_bytes()
-if args.ai_module and previous_code != candidate_code and hashlib.sha256(previous_code).hexdigest() != "848fa03d545d15b0cd4a42d7a4e13a7cfc248a8d584863f8761424f24c4a6694":
+if args.ai_module and previous_code != candidate_code and hashlib.sha256(previous_code).hexdigest() not in {
+    "848fa03d545d15b0cd4a42d7a4e13a7cfc248a8d584863f8761424f24c4a6694",
+    "36b7fb956fe6e9d9194e81d4bcd3c71126f7f36b44e7df7cc8f7e114dfb41353",
+}:
     sys.exit("服务器已有不同版本的 AI 模块，已保留。")
 socket_path = str(args.socket.resolve()) if args.socket else ""
 if args.socket and (not args.socket.is_socket() or not re.fullmatch(r"[\w./-]+", socket_path)):
@@ -48,7 +51,7 @@ for field in Path("/proc", pid, "environ").read_bytes().split(b"\0"):
         network_env[os.fsdecode(name)] = os.fsdecode(value)
 network_env["RATE90_PROBE_MODULE"] = source_module.as_uri()
 network_env["RATE90_OPENAI_SOCKET"] = socket_path
-diagnostics = """
+diagnostics = r"""
 const {openaiRequest, aiSettings, selectGames} = await import(process.env.RATE90_PROBE_MODULE);
 const request = (url, options) => openaiRequest(url, options, process.env.RATE90_OPENAI_SOCKET);
 const symbol = value => /^[A-Za-z0-9_.-]{1,80}$/.test(value ?? '') ? value : '';
@@ -62,6 +65,13 @@ async function httpError(response) {
   const body = await response.clone().json().catch(() => ({}));
   console.error('OpenAI HTTP', response.status, symbol(body.error?.code), symbol(body.error?.param),
                 'request-id', symbol(response.headers.get('x-request-id')));
+  if (response.status === 400 && typeof body.error?.message === 'string') {
+    let reason = body.error.message;
+    for (const secret of [process.env.RATE90_AI_KEY, process.env.OPENAI_API_KEY].filter(Boolean)) {
+      reason = reason.split(secret).join('[redacted]');
+    }
+    console.error('OpenAI 参数说明', reason.replace(/sk-[\w.-]+/g,'[redacted]').replace(/[\x00-\x1f\x7f-\x9f]+/g,' ').slice(0,400));
+  }
 }
 """
 network_probe = diagnostics + """

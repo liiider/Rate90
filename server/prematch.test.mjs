@@ -84,7 +84,12 @@ test('Sol uses the Responses endpoint and rejects invented or repeated fixtures'
   const cfg=aiSettings({OPENAI_API_KEY:'test'}),ctx={games:[{id:'1'},{id:'2'}]};
   const f=picks=>async(url,options)=>{
     assert.equal(url.pathname,'/v1/responses');
-    assert.equal(JSON.parse(options.body).model,'gpt-6.2-sol');
+    const body = JSON.parse(options.body);
+    assert.equal(body.model,'gpt-6.2-sol');
+    assert.equal(body.text.format.type,'json_object');
+    assert.equal(body.input[0].role,'user');
+    assert.match(body.input[0].content[0].text,/\bJSON\b/);
+    assert.deepEqual(JSON.parse(body.input[0].content[1].text),ctx);
     return {ok:true,json:async()=>({output:[{content:[{type:'output_text',text:JSON.stringify({picks})}]}]})};
   };
   const p=id=>({id,reason:'有持续的进攻机会'});

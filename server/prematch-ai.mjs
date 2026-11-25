@@ -43,10 +43,16 @@ export function openaiRequest(url, options, socket) {
     req.end(options.body);
   });
 }
+export function jsonInput(context) {
+  return [{role:'user',content:[
+    {type:'input_text',text:'请按要求返回一个 JSON 对象。以下是比赛资料。'},
+    {type:'input_text',text:JSON.stringify(context)}
+  ]}];
+}
 export async function selectGames(settings,context,fetchImpl=(url,opts)=>openaiRequest(url,opts,settings.socket)) {
   const response=await fetchImpl(settings.url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(60000),
     headers:{'Content-Type':'application/json',...(settings.key ? {Authorization:'Bearer '+settings.key} : {})},
-    body:JSON.stringify({model:settings.model,store:false,instructions:system,input:JSON.stringify(context),
+    body:JSON.stringify({model:settings.model,store:false,instructions:system,input:jsonInput(context),
       text:{format:{type:'json_object'}}})});
   if (!response.ok) throw new Error('AI HTTP '+response.status);
   const answer=await response.json();

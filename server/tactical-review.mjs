@@ -1,4 +1,4 @@
-import {aiSettings, openaiRequest} from './prematch-ai.mjs';
+import {aiSettings, jsonInput, openaiRequest} from './prematch-ai.mjs';
 
 const sides = ['home','away'];
 // Season 2026/27, rounds in scope when tactical coverage opened on 24 November.
@@ -106,7 +106,7 @@ async function askTactics(ai, context) {
   const response=await openaiRequest(ai.url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(120000),
     headers:{'Content-Type':'application/json',Authorization:'Bearer '+ai.key},
     body:JSON.stringify({model:ai.model,store:false,reasoning:{effort:'low'},max_output_tokens:5500,
-      instructions:tacticalInstructions,input:JSON.stringify(context),text:{format:{type:'json_object'}}})},ai.socket);
+      instructions:tacticalInstructions,input:jsonInput(context),text:{format:{type:'json_object'}}})},ai.socket);
   if (!response.ok) throw Error('AI HTTP '+response.status);
   const data=await response.json();
   const output=data.output?.flatMap(item=>item.content ?? []).filter(c=>c.type==='output_text').map(c=>c.text).join('');
