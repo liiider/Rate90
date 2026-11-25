@@ -138,8 +138,13 @@ test('dates resolve to whole competition rounds and selectors preserve card scor
   assert.equal(document.querySelector('.round-group').dataset.round,'10');
   assert.ok(!loaded.some(x => /ui\/data\/(collected|rounds)\//.test(x)));
   action(document,'league','all').click();
-  assert.deepEqual([...document.querySelectorAll('.round-group')].map(el => el.dataset.league + '/' + el.dataset.round).sort(),
-    ['bl/10','cl/4','l1/11','ll/13','pl/11','sa/12']);
+  const currentGroups = [...document.querySelectorAll('.round-group')];
+  assert.deepEqual(currentGroups.map(el=>el.dataset.league).sort(),['bl','cl','l1','ll','pl','sa']);
+  const catalog = await window.Rate90.catalog.loadCatalog();
+  for (const group of currentGroups) {
+    const league = group.dataset.league;
+    assert.equal(group.dataset.round,String(window.Rate90.catalog.latestPlayedRound(catalog,league)));
+  }
   action(document,'toggleCal').click();
   for (const month of ['10','09','08','07']) action(document,'calMonth','2026-' + month).click();
   const early = action(document,'pickDate','2026-07-08');
@@ -157,7 +162,7 @@ test('dates resolve to whole competition rounds and selectors preserve card scor
   action(overlay,'close').click();
   const linked = await openApp(t,home + '?match=' + taggedMatch);
   const reasons = linked.document.querySelector('#overlay .detail-hero-tags');
-  assert.deepEqual([...reasons.querySelectorAll('b')].map(el => el.textContent),styles);
+  assert.deepEqual([...reasons.querySelectorAll('b')].map(el => el.textContent),[...catalog.byId.get(taggedMatch).styles]);
   assert.ok([...reasons.querySelectorAll('small')].every(el => el.textContent.length > 5));
   await until(() => linked.document.querySelector('.starters li'),'The linked match did not load');
 });
@@ -355,10 +360,14 @@ test('one round picker selects upcoming and historical fixtures and survives sco
   select('following');
   assert.equal(document.querySelectorAll('.preview-round').length,6);
   assert.equal(document.querySelectorAll('.preview-row').length,66);
+  const catalog = await window.Rate90.catalog.loadCatalog();
+  const prematch = await window.Rate90.catalog.loadPrematch(catalog.prematchFile);
+  const nextPl = window.Rate90.upcoming.sections(prematch,{league:'pl',horizon:1},now)[0];
+  const upcomingDate = window.Rate90.upcoming.day(nextPl.games[0]);
   action(document,'toggleCal').click();
-  action(document,'pickDate','2026-11-25').click();
+  action(document,'pickDate',upcomingDate).click();
   assert.ok(document.querySelectorAll('.preview-row').length>0);
-  assert.ok([...document.querySelectorAll('.preview-row time')].every(t=>t.textContent.startsWith('11月25日')));
+  assert.ok([...document.querySelectorAll('.preview-row time')].every(t=>t.textContent.startsWith(window.Rate90.catalog.cnDate(upcomingDate))));
   window.history.back();
   await until(()=>picker().value==='following','Back did not restore the second future round');
   select('10');
