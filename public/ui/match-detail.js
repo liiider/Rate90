@@ -242,6 +242,10 @@
         '<p class="tactics-empty-sub">' + e(t('tacticsEmptySub', { team: sideClub })) + '</p>' +
       '</div>';
     }
+    const english = i18n?.getLang()==='en';
+    if (english && review.nodes.some(node=>!node.analysisEn || !node.commentEn)) {
+      return header + '<div class="tactics-empty"><p class="tactics-empty-title">' + e(t('translationPending')) + '</p></div>';
+    }
 
     return header + '<ol class="coach-timeline" aria-label="' + e(t('tacticsReviewAria', { team: sideClub })) + '">' +
       review.nodes.map((node, i) => {
@@ -250,8 +254,8 @@
         return '<li>' +
           '<div><span class="' + timeCls + '">' + e(tacticalTimeLabel(node.time)) + '</span></div>' +
           '<div class="coach-node-body">' +
-            '<p class="coach-analysis">' + e(node.analysis) + '</p>' +
-            '<div class="coach-comment"><span class="coach-ai-tag">' + e(t('aiNote')) + '</span>' + e(node.comment) + '</div>' +
+            '<p class="coach-analysis">' + e(english ? node.analysisEn : node.analysis) + '</p>' +
+            '<div class="coach-comment"><span class="coach-ai-tag">' + e(t('aiNote')) + '</span>' + e(english ? node.commentEn : node.comment) + '</div>' +
           '</div>' +
         '</li>';
       }).join('') + '</ol>';

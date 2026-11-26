@@ -53,6 +53,8 @@ fi
 if [[ "$1" == publisher || "$1" == access ]]; then
   mkdir -p "$ops"
   install -m 600 "$stage/github-known-hosts" "$ops/known_hosts"
+  install -m 600 "$stage/seo_pages.py" "$ops/seo_pages.py.new"
+  mv "$ops/seo_pages.py.new" "$ops/seo_pages.py"
   install -m 700 "$stage/publish-home.py" "$ops/publish.py.new"
   mv "$ops/publish.py.new" "$ops/publish.py"
   python3 "$ops/publish.py" --check-access

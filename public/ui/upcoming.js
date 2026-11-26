@@ -68,7 +68,8 @@
         record.ids.every(id=>byId.has(id)) &&
         Array.isArray(record.items) && record.items.every(p=>byId.has(p?.id) && typeof p.reason==='string'));
       const pickMap=new Map();
-      if (validPicks) record.items.forEach((p,i)=>pickMap.set(p.id,{rank:i,reason:p.reason}));
+      if (validPicks) record.items.forEach((p,i)=>pickMap.set(p.id,{rank:i,
+        reason:i18n?.getLang()==='en' ? p.reasonEn || t('translationPending') : p.reason}));
 
       const ordered=validPicks && record.items.length
         ? [...record.items.map(p=>byId.get(p.id)), ...section.games.filter(g=>!pickMap.has(g.id))]

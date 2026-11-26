@@ -1,7 +1,7 @@
 import {atomicAsset,assetDirectory,optionalIndex} from './collected-feed.mjs';
 import {LEAGUES,beijingDate} from './bsd.mjs';
 import {DAY,codes,initPrematch,nextRounds,recentPattern,scheduleGame,scopesFor,signature,standingContext,tableRows,teamHistory} from './prematch.mjs';
-import {aiSettings,promptVersion,selectGames} from './prematch-ai.mjs';
+import {aiSettings,promptVersion,previousPromptVersion,selectGames} from './prematch-ai.mjs';
 
 const nameKey = s => s.normalize('NFKC').trim().toLowerCase();
 const shortDate=t=>new Date(t).toISOString().slice(0,10);
@@ -132,7 +132,7 @@ export async function refreshPrematch(db,base,client,{now=Date.now(),dir=assetDi
       if (![g.home,g.away].every(name=>patterns.get(g.league+'/'+name)?.samples)) continue;
       for (const [name,id] of [[g.home,g.homeId],[g.away,g.awayId]]) {
         const key=g.league+'/'+name;
-        teams[key]={name:names.get(nameKey(name))?.zh??name,recent:history.get(key),pattern:patterns.get(key),
+        teams[key]={name:names.get(nameKey(name))?.zh??name,nameEn:name,recent:history.get(key),pattern:patterns.get(key),
           table:table?{asOf:table.at,standing:standingContext(table.value,name,id)}:null};
       }
       candidates.push({id:g.id,competition:g.league,round:g.round,home:g.home,away:g.away,kickoff:g.timeKnown===false?beijingDate(new Date(g.kickoff)):new Date(g.kickoff).toISOString(),
@@ -157,7 +157,7 @@ export async function refreshPrematch(db,base,client,{now=Date.now(),dir=assetDi
     if (!prediction) {
       // A later source update may arrive while a replacement prediction is pending.
       const old=db.prepare(`SELECT created,result,context FROM preview_predictions WHERE scope=? AND model=?
-        AND json_extract(context,'$.promptVersion')=? AND created<=? ORDER BY created DESC LIMIT 1`).get(scope,modelName,promptVersion,now);
+        AND json_extract(context,'$.promptVersion') IN (?,?) AND created<=? ORDER BY created DESC LIMIT 1`).get(scope,modelName,promptVersion,previousPromptVersion,now);
       const lineup=games=>games.map(g=>[g.id,g.home,g.away,g.kickoff]);
       if (old && now-old.created<DAY && JSON.stringify(lineup(JSON.parse(old.context).games))===JSON.stringify(lineup(candidates))) prediction=old;
     }

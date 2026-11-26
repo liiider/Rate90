@@ -66,7 +66,7 @@ async function run() {
       if (!season) {
         try {
           report.tactics=await generateTactics(db,base);
-          if (report.tactics.generated) await publishCollected(db,base);
+          if (report.tactics.generated || report.tactics.translated) await publishCollected(db,base);
         } catch (error) {report.tactics={errors:[error.message]};}
         try {
           const last=Number(getMeta(db,'prematch:last')) || 0;

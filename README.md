@@ -2,9 +2,17 @@
 
 Rate90 帮你在知道比分之前挑一场值得回看的足球比赛。可以按日期、赛事或轮次浏览五大联赛和欧冠，先看观赏分和推荐理由，再打开详情查看阵容。比赛数据、比赛动态和战术分析按场次、按标签分别解锁。[打开 Rate90](https://r90.liderrr.cc)
 
+Rate90 is a spoiler-free football replay guide for the Champions League and Europe's top five leagues. Compare watchability ratings, discover pre-match recommendations and explore each coach's tactical decisions after the match. [English replay guide](https://r90.liderrr.cc/en/).
+
+## 双语内容与搜索指南
+
+- 赛前推荐和战术复盘同步输出中英文，共用推荐结果、评分和节点。已有中文复盘由日常采集任务逐批补齐英文译文。
+- 英文搜索指南（`/en/`）提供周末推荐、赛事、球队及五大联赛赛季观赏性榜单。发布器使用当期公开评分快照生成静态页面、`sitemap.xml` 和 `robots.txt`，与数据一同发布。
+- 本地可运行 `python3 deploy/seo_pages.py` 预览搜索指南。正式域名使用 Cloudflare Web Analytics 记录访问，离线预览不发送统计。
+
 ## v0.2.1 中英文前端 · 2026-11-25
 
-右上角可切换中文和英文，浏览器会记住选择。赛事、球队、阵容、技术统计和比赛动态随之切换。当前 AI 推荐理由和战术复盘正文为中文。
+右上角可切换中文和英文，浏览器会记住选择。赛事、球队、阵容、技术统计和比赛动态随之切换。此版本 AI 推荐理由和战术复盘正文为中文。
 
 [GitHub Release](https://github.com/liiider/Rate90/releases/tag/v0.2.1) · [战术复盘出稿对照](docs/tactical-review-evaluation.md)
 

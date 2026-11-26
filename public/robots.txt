@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://r90.liderrr.cc/sitemap.xml

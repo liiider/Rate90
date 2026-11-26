@@ -401,8 +401,10 @@ test('upcoming picks distinguish an empty selection, an unassessed date and a le
   };
   assert.match(render('all').textContent,/暂无全场推荐/);
   assert.doesNotMatch(render('pl').textContent,/暂无全场推荐/);
-  preview.picks[scope+'/pl']={ids:[first.id],items:[{id:first.id,reason:'双方近期都在末段创造机会。'}]};
+  preview.picks[scope+'/pl']={ids:[first.id],items:[{id:first.id,reason:'双方近期都在末段创造机会。',reasonEn:'Both sides create late chances.'}]};
   assert.equal(render('pl').querySelectorAll('.pick-card').length,1);
   assert.equal(render('pl').querySelector('.pick-reason').textContent,'双方近期都在末段创造机会。');
   assert.equal(render('cl').querySelector('.pick-card'),null);
+  window.Rate90.i18n.setLang('en');
+  assert.equal(render('pl').querySelector('.pick-reason').textContent,'Both sides create late chances.');
 });

@@ -20,7 +20,7 @@ const facts={id:12,league:{id:1},home_team:'A',away_team:'B',event_date:new Date
 const base={teams:[],fixtures:[],sample:{matches:[]}};
 function answer(ctx) {
   return {side:ctx.targetSide,score:7.5,nodes:['XI','E0','FT'].map(id=>({
-    from:id,to:id,analysis:ctx.targetSide+' analysis',comment:'教练点评'}))};
+    from:id,to:id,analysis:ctx.targetSide+' analysis',comment:'教练点评',analysisEn:'The team changed its approach.',commentEn:'The change was well timed.'}))};
 }
 test('tactical reviews send the JSON instruction and match data in a Responses user message',async t=>{
   const db=openQueue(':memory:');t.after(()=>db.close());
@@ -147,5 +147,26 @@ test('side generation survives a failure and restart; only confirmed results app
   await publishCollected(db,base,dir);
   const updated=(await storedFeed('2026-11-22',true,dir)).matches.find(m=>m.id==='12');
   assert.equal(updated.details.tactics.away.nodes[0].analysis,'away analysis');
+  assert.equal(updated.details.tactics.away.nodes[0].analysisEn,'The team changed its approach.');
   assert.ok(!(await storedFeed('2026-11-22',false,dir)).matches.some(m=>m.details));
+});
+
+test('legacy reviews acquire English on the existing bounded queue without changing score or Chinese copy',async t=>{
+  const db=openQueue(':memory:');t.after(()=>db.close());
+  db.prepare("INSERT INTO games(id,fixture,facts,phase,fetched_at) VALUES(?,?,?,'done',?)").run(12,JSON.stringify(fixture),JSON.stringify(facts),now);
+  const original={score:7.5,nodes:[{time:'赛前',analysis:'首发采用双前锋。',comment:'保留中路接应。'}]};
+  for(const side of ['home','away']) db.prepare('INSERT INTO tactical_reviews(game_id,side,result,retry_at) VALUES(?,?,?,0)').run(12,side,JSON.stringify(original));
+  const options={now,limit:1,ai:{model:'mock'},ask:async()=>{throw Error('must not repeat analysis');},translate:async(_,ctx)=>{
+    assert.deepEqual(ctx.nodes,original.nodes);
+    return {answer:{nodes:[{analysisEn:'Two strikers started.',commentEn:'Central support was retained.'}]}};
+  }};
+  const first=await generateTactics(db,base,options);
+  assert.equal(first.translated,1);assert.equal(first.generated,0);
+  const records=db.prepare('SELECT result FROM tactical_reviews ORDER BY side').all().map(row=>JSON.parse(row.result));
+  assert.equal(records[0].score,original.score);
+  assert.equal(records[0].nodes[0].analysis,original.nodes[0].analysis);
+  assert.equal(records[0].nodes[0].analysisEn,'Two strikers started.');
+  assert.equal(records[1].nodes[0].analysisEn,undefined);
+  assert.equal((await generateTactics(db,base,options)).translated,1);
+  assert.equal((await generateTactics(db,base,options)).attempted,0);
 });

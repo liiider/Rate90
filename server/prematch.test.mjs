@@ -92,12 +92,13 @@ test('Sol uses the Responses endpoint and rejects invented or repeated fixtures'
     assert.deepEqual(JSON.parse(body.input[0].content[1].text),ctx);
     return {ok:true,json:async()=>({output:[{content:[{type:'output_text',text:JSON.stringify({picks})}]}]})};
   };
-  const p=id=>({id,reason:'有持续的进攻机会'});
+  const p=id=>({id,reason:'有持续的进攻机会',reasonEn:'Both sides repeatedly create chances.'});
   assert.deepEqual(await selectGames(cfg,ctx,f([])),[]);
   assert.deepEqual(await selectGames(cfg,ctx,f([p('2')])),[p('2')]);
   assert.equal((await selectGames(cfg,ctx,f([p('1'),p('2')]))).length,2);
   await assert.rejects(selectGames(cfg,ctx,f([p('1'),p('1')])));
   await assert.rejects(selectGames(cfg,ctx,f([p('1'),p('3')])));
+  await assert.rejects(selectGames(cfg,ctx,f([{id:'1',reason:'缺少译文'}])));
 });
 test('collector publishes two complete rounds and caches distinct by-date and by-round Sol selections',async t=>{
   const db=openQueue(':memory:');t.after(()=>db.close());
@@ -120,7 +121,7 @@ test('collector publishes two complete rounds and caches distinct by-date and by
     assert.equal(ctx.teams['pl/A'].pattern.samples,1);
     assert.ok(ctx.games.every(g=>g.away!=='Unknown'));
     assert.equal(ctx.games[0].unavailable.players.home[0].status,'doubtful');
-    return [{id:ctx.games[0].id,reason:'双方的进攻机会值得关注'}];
+    return [{id:ctx.games[0].id,reason:'双方的进攻机会值得关注',reasonEn:'Both teams create dangerous chances.'}];
   };
   const options={dir,now,ai:{model:'gpt-6.2-sol'},ask,modelLimit:10};
   const base={teams:[],fixtures:[]};

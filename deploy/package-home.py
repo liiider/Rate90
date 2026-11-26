@@ -34,6 +34,7 @@ with tarfile.open(output, 'w:gz', format=tarfile.USTAR_FORMAT) as tar:
         tar.addfile(entry, io.BytesIO(contents))
     for dest, source in {'install.sh': 'home-collector-install.sh', 'upgrade.sh': 'home-collector-upgrade.sh',
                          'home-service.sh': 'home-service.sh', 'publish-home.py': 'publish-home.py',
+                         'seo_pages.py': 'seo_pages.py',
                          'github-known-hosts':'github-known-hosts'}.items():
         add(dest, (root/'deploy'/source).read_bytes())
     files = [root/'package.json', root/'scripts/collect.mjs', root/'scripts/pull-bsd-local.mjs',

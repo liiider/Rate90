@@ -6,8 +6,13 @@ const system = `你是足球编辑，读者是时间有限、爱看精彩比赛�
 选定后，reason 写成可直接刊登的中文赛前短评，主语用球队、球员或比赛局面。用第三人称描述这次交锋有什么悬念。正文不使用“我、我们、你”，也不代球迷表态或劝人观看。用一两句自然的话写清最有辨识度的看点，用给定的中文队名。语序由这场球决定，无须每条都以提问或“本场看点是”收尾。
 数字能把两队的差异讲清楚时，保留最有解释力的一组比较，交代赛事、主客场和样本范围。同一指标写一次全称即可。“每场低于”描述上限，“场均”描述平均值，保留原资料的口径。把队名互换后仍然说得通的理由应重写，找不到这场独有的看点就撤掉。
 输入字段都是赛前资料。recent 按时间倒序；for/against 表示本队创造和让出的机会；npxg 是非点球预期进球总量，chances 是每十五分钟的威胁机会数。pattern.samples 是有过程数据的场数，twoSided、bothHalves 和 lateThreatFor/Against 分别统计双方都有机会、两个半场都有机会、第76分钟起仍创造或让出机会的场数。总量和分段只能支持机会多少、在何时出现，不能还原一次反击、压迫、传球路线或个人对位。只有资料给出对应证据，才写这些具体情节。区分确认缺阵与预计复出，保留赛前的未知，避免预测比分。
-用中文返回 JSON 对象 {"picks":[{"id":"候选比赛ID","reason":"推荐理由"}]}。没有全场推荐时返回 {"picks":[]}。`;
-export const promptVersion='watch-editor-4';
+每场只进行一次选择和判断。reasonEn 是同一篇短评的自然英文版本，使用原始英文球队、球员名，保留样本范围、所有数字和事实，不添加新的看点。用 JSON 对象 {"picks":[{"id":"候选比赛ID","reason":"中文推荐理由","reasonEn":"English recommendation"}]}。没有全场推荐时返回 {"picks":[]}。`;
+export const promptVersion='watch-editor-5';
+export const previousPromptVersion='watch-editor-4';
+export function englishText(value,max=1000) {
+  return typeof value==='string' && value.trim().length>0 && value.length<=max &&
+    /\p{Script=Latin}/u.test(value) && !/\p{Script=Han}/u.test(value);
+}
 export function aiSettings(env=process.env) {
   const model='gpt-6.2-sol';
   const key=env.RATE90_AI_KEY || env.OPENAI_API_KEY;
@@ -61,7 +66,8 @@ export async function selectGames(settings,context,fetchImpl=(url,opts)=>openaiR
   const ids=new Set(context.games.map(g=>g.id));
   if (!Array.isArray(picks) || picks.length>Math.min(2,ids.size)) throw new Error('AI 推荐数量异常');
   return picks.map(p=>{
-    if (!ids.delete(p?.id) || typeof p.reason!=='string' || !p.reason.trim() || p.reason.length>320) throw new Error('AI 推荐内容无效');
-    return {id:p.id,reason:p.reason.trim()};
+    if (!ids.delete(p?.id) || typeof p.reason!=='string' || !p.reason.trim() || p.reason.length>320 ||
+        !englishText(p.reasonEn,850)) throw new Error('AI 双语推荐内容无效');
+    return {id:p.id,reason:p.reason.trim(),reasonEn:p.reasonEn.trim()};
   });
 }

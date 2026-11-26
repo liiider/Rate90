@@ -72,6 +72,8 @@
       footerAria: '页脚',
       about: '关于 Rate90',
       method: '评分方法',
+      replayGuide: '回看指南',
+      translationPending: '英文译文即将更新',
       aboutBody: 'Rate90 是一份无剧透的足球回看指南，收录欧冠和五大联赛。选一轮比赛，看评分和推荐理由，再决定今晚看哪场。',
       methodBody: 'Rate90 不按最终比分或球队名气打分，而是依据全场过程数据从六个量化维度加权计分，满分 10 分。',
       langBtnLabel: 'EN',
@@ -199,6 +201,8 @@
       footerAria: 'Footer',
       about: 'About Rate90',
       method: 'Rating Method',
+      replayGuide: 'Replay Guide',
+      translationPending: 'English translation is being prepared.',
       aboutBody: 'Rate90 is a spoiler-free football replay guide covering the Champions League and Europe\'s top five leagues. Pick a round, check ratings and tags, and choose tonight\'s match.',
       methodBody: 'Rate90 never rates by final scoreline or club reputation. Every match is scored out of 10 from six weighted quantitative dimensions measured across the full 90 minutes.',
       langBtnLabel: '中文',
@@ -541,6 +545,12 @@
   }
 
   function readLang() {
+    const query = new URLSearchParams(location.search || (location.protocol==='file:' ? location.hash.slice(1) : ''));
+    const explicit = query.get('lang');
+    if (explicit==='en' || explicit==='zh') {
+      try {localStorage.setItem('rate90.v2.lang', JSON.stringify(explicit));} catch {}
+      return explicit;
+    }
     try {
       const raw = localStorage.getItem('rate90.v2.lang');
       const parsed = raw === null ? 'zh' : JSON.parse(raw);

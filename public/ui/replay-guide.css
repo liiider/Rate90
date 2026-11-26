@@ -1,0 +1,19 @@
+:root {color-scheme:dark; font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:#09090a; color:#eee;}
+* {box-sizing:border-box;} body {margin:0;} a {color:inherit;text-decoration:none;} a:hover {color:#f5ce71;}
+.guide-header {display:flex;align-items:center;justify-content:space-between;gap:24px;max-width:1100px;margin:auto;padding:22px 28px;border-bottom:1px solid #242326;}
+.guide-brand {display:flex;align-items:center;gap:5px;font-size:21px;font-weight:800;white-space:nowrap;}
+.guide-brand span {color:#15110a;background:#f5ce71;border-radius:8px;display:grid;place-items:center;width:34px;height:34px;font-weight:900;}
+.guide-brand strong {color:#f5ce71;margin-left:-5px;} .guide-header nav,.guide-leagues {display:flex;gap:10px 20px;flex-wrap:wrap;font-size:14px;}
+.guide-header nav a,.guide-leagues a {color:#b7b4b0;} .guide-header nav a:hover,.guide-leagues a:hover {color:#f5ce71;}
+.guide-main {max-width:900px;margin:auto;padding:38px 28px 60px;} h1 {font-size:clamp(26px,4vw,38px);line-height:1.2;margin:0 0 12px;letter-spacing:-.035em;}
+.guide-intro {color:#c3c0bb;max-width:66ch;margin:0;} .guide-date,.guide-meta,.guide-tags,.guide-empty,.guide-summary {color:#aaa6a1;font-size:13px;}
+.guide-date {margin:12px 0 26px;} h2 {font-size:18px;margin:30px 0 12px;} .guide-matches {padding:0;list-style:none;display:grid;gap:8px;margin:0;}
+.guide-match a {display:grid;grid-template-columns:1fr auto;gap:5px 12px;align-items:center;padding:13px 16px;border:1px solid #2b292a;background:#121214;border-radius:11px;}
+.guide-match a:hover {border-color:#ab8d4b;} .guide-teams {font-weight:650;grid-column:1;grid-row:2;}
+.guide-teams span {color:#85817b;font-weight:400;} .guide-rating {grid-column:2;grid-row:1/4;background:#e8bf64;color:#171109;font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;padding:5px 11px;border-radius:8px;min-width:58px;text-align:center;}
+.guide-tags {grid-column:1;line-height:1.4;} .guide-summary {margin-top:-3px;} .guide-leagues {margin-top:20px;}
+.guide-table-wrap {overflow:auto;border:1px solid #2b292a;border-radius:10px;} table {border-collapse:collapse;width:100%;font-size:14px;}
+th,td {padding:10px 14px;text-align:right;border-bottom:1px solid #282629;font-variant-numeric:tabular-nums;} th:first-child,td:first-child {text-align:left;}
+th {color:#aaa6a1;font-weight:600;background:#151517;white-space:nowrap;} tr:last-child td {border:0;} td a {font-weight:650;}
+.guide-footer {text-align:center;font-size:12px;color:#aaa6a1;border-top:1px solid #242326;padding:18px;} :focus-visible {outline:2px solid #e8bf64;outline-offset:4px;}
+@media(max-width:640px){.guide-header {align-items:flex-start;flex-direction:column;gap:14px;padding:18px;} .guide-main {padding:28px 16px 44px;} .guide-match a {padding:12px;} th,td {padding:9px 8px;}}

@@ -118,6 +118,8 @@
     if (aboutBtn) aboutBtn.textContent = t('about');
     const methodBtn = document.querySelector('.footer-links [data-act="method"]');
     if (methodBtn) methodBtn.textContent = t('method');
+    const guideLink = $('replay-guide-link');
+    if (guideLink) guideLink.textContent = t('replayGuide');
   }
 
   applyTheme();
@@ -663,6 +665,11 @@
       case 'lang':
         state.lang = state.lang === 'zh' ? 'en' : 'zh';
         if (i18n) i18n.setLang(state.lang);
+        if (routeParams().has('lang')) {
+          const params=routeParams();
+          params.set('lang',state.lang);
+          history.replaceState(history.state,'',routeUrl(params));
+        }
         railMounted = false;
         render();
         if (modal) renderModal();

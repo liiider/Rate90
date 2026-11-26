@@ -14,6 +14,7 @@ import time
 import tempfile
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from seo_pages import generate_pages, read_asset
 
 ASSET = 'public/ui/data/'
 INDEX = 'collected-index.js'
@@ -94,41 +95,58 @@ class Publisher:
         tmp.write_text(json.dumps(value))
         tmp.replace(self.receipt)
 
-    def online(self, digest):
-        request = Request(self.site + '?r=' + digest[:14], headers={'Cache-Control': 'no-cache'})
-        try:
-            with urlopen(request, timeout=20) as response:
-                return git_blob(response.read()) == digest
-        except HTTPError as e:
-            if e.code == 404:
-                return False
-            raise
+    def online(self, digest, seo_files):
+        base = self.site.rsplit('/ui/data/', 1)[0]
+        checks = [(self.site, digest), (base + '/sitemap.xml', git_blob(seo_files['public/sitemap.xml'])),
+                  (base + '/en/', git_blob(seo_files['public/en/index.html']))]
+        for url, expected in checks:
+            request = Request(url + '?r=' + expected[:14], headers={'Cache-Control': 'no-cache'})
+            try:
+                with urlopen(request, timeout=20) as response:
+                    if git_blob(response.read()) != expected:
+                        return False
+            except HTTPError as e:
+                if e.code == 404:
+                    return False
+                raise
+        return True
 
     def deploy(self):
         data = (self.data / INDEX).read_bytes()
         digest = git_blob(data)
+        index = parse_index(data)
+        seo_files = generate_pages(index, read_asset(self.data / 'teams.js'))
+        seo = hashlib.sha256(''.join(path + git_blob(contents) for path, contents in sorted(seo_files.items())).encode()).hexdigest()
         last = json.loads(self.receipt.read_text()) if self.receipt.exists() else {}
-        if last.get('live') == digest:
+        if last.get('live') == digest and last.get('seo') == seo:
             return True
         now = time.time()
-        waiting = last.get('pending') == digest
+        waiting = last.get('pending') == digest and last.get('seo') == seo
         if waiting:
-            if self.online(digest):
-                self.record({'live': digest})
+            if self.online(digest, seo_files):
+                self.record({'live': digest, 'seo': seo})
                 print('RATE90_LIVE', digest[:12], flush=True)
                 return True
             if now < last['retryAfter']:
                 return False
 
-        index = parse_index(data)
         head = self.head()
-        entries = self.git('ls-tree', '-r', head, '--', ASSET + INDEX, ASSET + 'collected/').splitlines()
+        entries = self.git('ls-tree', '-r', head, '--', ASSET, 'public/en/', 'public/sitemap.xml', 'public/robots.txt').splitlines()
         existing = {}
         for entry in entries:
             metadata, name = entry.split(b'\t', 1)
             existing[name.decode()] = metadata.split()[2].decode()
         remote_digest = existing.get(ASSET + INDEX)
         changes = []
+        def stage_file(path, content):
+            sha = git_blob(content)
+            if existing.get(path) == sha:
+                return
+            stored = self.git('hash-object', '-w', '--stdin', data=content).decode().strip()
+            if stored != sha:
+                raise ValueError('快照传输校验失败')
+            changes.append(f'100644 {sha}\t{path}\n')
+
         if remote_digest != digest:
             if remote_digest:
                 previous = parse_index(self.git('cat-file', 'blob', remote_digest))
@@ -141,17 +159,17 @@ class Publisher:
             for name in [*active_files(index), INDEX]:
                 content = data if name == INDEX else (self.data / name).read_bytes()
                 path = ASSET + name
-                sha = git_blob(content)
                 if name.startswith('prematch-') and (not content.startswith(PREFIX) or not content.endswith(b';\n') or
                         hashlib.sha256(content[len(PREFIX):-2]).hexdigest()[:20] != name[9:-3]):
                     raise ValueError('赛前快照校验失败')
-                if existing.get(path) != sha:
-                    stored = self.git('hash-object', '-w', '--stdin', data=content).decode().strip()
-                    if stored != sha:
-                        raise ValueError('快照传输校验失败')
-                    changes.append(f'100644 {sha}\t{path}\n')
-        if not changes and self.online(digest):
-            self.record({'live': digest})
+                stage_file(path, content)
+        for path, content in seo_files.items():
+            stage_file(path, content)
+        for path in existing:
+            if re.fullmatch(r'public/en/teams/[^/]+/index\.html', path) and path not in seo_files:
+                changes.append(f'0 {"0" * 40}\t{path}\n')
+        if not changes and self.online(digest, seo_files):
+            self.record({'live': digest, 'seo': seo})
             print('RATE90_LIVE', digest[:12], flush=True)
             return True
         # Allow the triggering deployment to finish before issuing a deployment retry.
@@ -168,7 +186,7 @@ class Publisher:
             print('RATE90_PUSHED', commit[:12], flush=True)
             if waiting:
                 delay = min(21600, max(delay, last.get('delay', delay) * 2))
-        self.record({'pending': digest, 'retryAfter': now + delay, 'delay': delay})
+        self.record({'pending': digest, 'seo': seo, 'retryAfter': now + delay, 'delay': delay})
         return False
 
 

@@ -9,6 +9,7 @@ const types = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml',
+  '.xml': 'application/xml; charset=utf-8', '.txt': 'text/plain; charset=utf-8',
   '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg',
   '.ico': 'image/x-icon', '.woff2': 'font/woff2'
 };
@@ -37,7 +38,7 @@ export async function handleRequest(req, res) {
     return res.end();
   }
   try {
-    const file = await realpath(resolve(publicRoot, '.' + (path === '/' ? '/index.html' : path)));
+    const file = await realpath(resolve(publicRoot, '.' + (path.endsWith('/') ? path+'index.html' : path)));
     const rel = relative(publicRoot, file);
     const type = types[extname(file)];
     if (isAbsolute(rel) || rel.split(sep).some(part => part.startsWith('.')) || !type) {

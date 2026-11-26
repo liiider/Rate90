@@ -35,9 +35,10 @@ class PublicationTest(unittest.TestCase):
         self.state.mkdir()
         self.publisher = pub.Publisher(self.app, self.state, self.remote.as_uri())
         self.live = ''
-        self.publisher.online = lambda digest: digest == self.live
+        self.publisher.online = lambda digest, seo: digest == self.live
         self.data = self.app / pub.ASSET
         (self.data / 'collected').mkdir(parents=True)
+        (self.data / 'teams.js').write_bytes(pub.PREFIX + b'[];\n')
         self.stem = 'collected/2026-11-23-' + '1' * 20
         self.write(1)
         (self.data / (self.stem+'.js')).write_text('day detail')
@@ -60,8 +61,9 @@ class PublicationTest(unittest.TestCase):
         published = self.head()
         self.assertNotEqual(old, published)
         tree = cmd('--git-dir', str(self.remote), 'ls-tree', '-r', '--name-only', 'main').splitlines()
+        seo = pub.generate_pages(pub.parse_index((self.data/pub.INDEX).read_bytes()), [])
         self.assertEqual(set(tree), {'README', pub.ASSET+pub.INDEX, pub.ASSET+self.stem+'.js',
-                                      pub.ASSET+self.stem+'-preview.js'})
+                                      pub.ASSET+self.stem+'-preview.js', *seo})
         self.assertFalse(self.publisher.deploy())
         self.assertEqual(self.head(), published)
         receipt = json.loads(self.publisher.receipt.read_text())
@@ -72,8 +74,27 @@ class PublicationTest(unittest.TestCase):
         self.live = self.write(1)
         self.assertTrue(self.publisher.deploy())
         self.assertEqual(self.head(), retried)
-        self.publisher.online = lambda _: self.fail('unchanged snapshot contacted production')
+        self.publisher.online = lambda *_: self.fail('unchanged snapshot contacted production')
         self.assertTrue(self.publisher.deploy())
+
+    def test_guides_include_only_rated_completed_matches_and_generate_stable_links(self):
+        index = {'updatedAt':'2026-11-25T10:00:00Z','fixtures':[
+            {'id':str(i),'league':'pl','home':'1','away':'2','status':'finished','date':'2026-11-22',
+             'time':'18:00','rating':8.5,'round':11,'home_score':99,'away_score':88,
+             'styleIds':['end-to-end']} for i in range(5)] + [
+            {'id':'future','league':'pl','home':'1','away':'2','status':'scheduled','date':'2026-11-22','rating':10},
+            {'id':'old','league':'pl','home':'1','away':'2','status':'finished','date':'2026-11-22','rating':9,'replacedBy':'2'}]}
+        teams=[{'id':'1','en':'Team & One'},{'id':'2','en':'Team Two'}]
+        pages=pub.generate_pages(index,teams)
+        self.assertIn(b'Team &amp; One', pages['public/en/weekend/index.html'])
+        self.assertIn(b'End-to-end', pages['public/en/weekend/index.html'])
+        self.assertIn(b'100%', pages['public/en/rankings/index.html'])
+        self.assertIn(b'lang=en', pages['public/en/teams/team-one-1/index.html'])
+        self.assertIn(b'https://r90.liderrr.cc/en/teams/team-one-1/', pages['public/sitemap.xml'])
+        for contents in pages.values():
+            self.assertNotIn(b'99-88',contents)
+            self.assertNotIn(b'match=future',contents)
+            self.assertNotIn(b'match=old',contents)
 
     def test_prematch_only_update(self):
         self.publisher.deploy()
